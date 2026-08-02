@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# session-handoff.sh — Stop hook
+#
+# Writes (or updates) docs/handoff/<date>-<session>.md summarising what changed in
+# this session, and flags documentation that looks stale relative to the change.
+#
+# Deterministic and dependency-free: it reads `git status` and `git diff --stat`.
+# It makes NO model call, edits NO code, and NEVER blocks — it always exits 0.
+#
+# Opt out with: AJ_SKIP_HANDOFF_HOOK=1
+
+set -u
+
+PAYLOAD="$(cat 2>/dev/null || true)"
+
+[ "${AJ_SKIP_HANDOFF_HOOK:-0}" = "1" ] && exit 0
+command -v git >/dev/null 2>&1 || exit 0
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -z "$ROOT" ] && exit 0
+
+json_str() {
+  _key="$1"
+  [ -z "${PAYLOAD:-}" ] && return 0
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$PAYLOAD" | jq -r --arg k "$_key" \
+      'getpath($k | split(".")) // empty' 2>/dev/null && return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$PAYLOAD" | python3 -c '
+import sys, json
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for k in sys.argv[1].split("."):
+    if isinstance(d, dict) and k in d:
+        d = d[k]
+    else:
+        sys.exit(0)
+print(d if isinstance(d, str) else json.dumps(d))
+' "$_key" 2>/dev/null && return 0
+  fi
+  _leaf="${_key##*.}"
+  printf '%s' "$PAYLOAD" \
+    | sed -n "s/.*\"${_leaf}\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" \
+    | head -n 1
+}
+
+SESSION="$(json_str 'session_id')"
+[ -z "$SESSION" ] && SESSION="local"
+SHORT="$(printf '%s' "$SESSION" | tr -cd 'A-Za-z0-9' | cut -c1-8)"
+[ -z "$SHORT" ] && SHORT="session"
+
+DATE="$(date +%Y-%m-%d)"
+STAMP="$(date '+%Y-%m-%d %H:%M:%S %Z')"
+OUTDIR="$ROOT/docs/handoff"
+OUT="$OUTDIR/${DATE}-${SHORT}.md"
+
+BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+STATUS="$(git -C "$ROOT" status --short 2>/dev/null || true)"
+STAT="$(git -C "$ROOT" diff --stat HEAD 2>/dev/null || true)"
+STAGED="$(git -C "$ROOT" diff --cached --stat 2>/dev/null || true)"
+
+# Files touched this session: uncommitted changes plus commits not on the default branch.
+CHANGED="$(git -C "$ROOT" diff --name-only HEAD 2>/dev/null; \
+           git -C "$ROOT" diff --cached --name-only 2>/dev/null; \
+           git -C "$ROOT" ls-files --others --exclude-standard 2>/dev/null)"
+
+BASE=""
+for b in origin/main main origin/master master; do
+  if git -C "$ROOT" rev-parse --verify --quiet "$b" >/dev/null 2>&1; then BASE="$b"; break; fi
+done
+COMMITS=""
+if [ -n "$BASE" ]; then
+  COMMITS="$(git -C "$ROOT" log --oneline "${BASE}..HEAD" 2>/dev/null | head -n 20)"
+  CHANGED="$CHANGED
+$(git -C "$ROOT" diff --name-only "${BASE}...HEAD" 2>/dev/null)"
+fi
+
+CHANGED="$(printf '%s\n' "$CHANGED" | sed '/^$/d' | sort -u)"
+
+if [ -z "$CHANGED" ] && [ -z "$COMMITS" ]; then
+  exit 0                                   # nothing happened; write nothing
+fi
+
+has() { printf '%s\n' "$CHANGED" | grep -Eq -- "$1"; }
+
+# --- Drift detection --------------------------------------------------------
+FLAGS=""
+flag() { FLAGS="${FLAGS}
+- [ ] $1"; }
+
+# Conventions changed but CLAUDE.md did not.
+if { has '\.claude/standards/' || has 'Program\.cs$' || has '/Middleware/' \
+     || has '\.editorconfig$' || has 'Directory\.Build\.props$' \
+     || has 'eslint\.config' || has 'nx\.json$'; } && ! has 'CLAUDE\.md$'; then
+  flag "**CLAUDE.md may be stale** — conventions, standards, or build configuration changed, but no \`CLAUDE.md\` was updated."
+fi
+
+# API surface changed but the OpenAPI snapshot / generated types did not.
+if { has '/Controllers/' || has '/Contracts/' || has 'Controller\.cs$'; } \
+   && ! has '^docs/api/'; then
+  flag "**OpenAPI snapshot may be stale** — controllers or contracts changed, but nothing under \`docs/api/\` was updated. Run \`/sync\`."
+fi
+if { has '/Controllers/' || has '/Contracts/'; } && ! has 'api-types'; then
+  flag "**Generated frontend types may be stale** — the API surface changed but \`libs/data-access/api-types\` was not regenerated. Run \`/sync\`."
+fi
+
+# Architectural change with no ADR.
+if { has '/Migrations/' || has 'DbContext' || has 'CloudProvider' \
+     || has 'package\.json$' || has '\.csproj$'; } && ! has '^docs/adr/'; then
+  flag "**ADR may be missing** — a schema, dependency, or platform change landed without a decision record in \`docs/adr/\`."
+fi
+
+# Tests.
+if { has '\.cs$' || has '\.ts$'; } && ! has '[Tt]ests?/' && ! has '\.spec\.ts$' && ! has 'Tests\.cs$'; then
+  flag "**No test files changed** — confirm the new behaviour is actually covered."
+fi
+
+# Spec.
+if [ -n "$COMMITS" ] && ! has '^docs/specs/'; then
+  flag "No spec under \`docs/specs/\` was touched — check the work traces back to an approved spec."
+fi
+
+[ -z "$FLAGS" ] && FLAGS="
+- None detected. (Absence of a flag is not proof the docs are current.)"
+
+mkdir -p "$OUTDIR" 2>/dev/null || exit 0
+
+{
+  printf '# Session handoff — %s\n\n' "$DATE"
+  printf '**Session:** `%s`  \n' "$SHORT"
+  printf '**Updated:** %s  \n' "$STAMP"
+  printf '**Branch:** `%s`\n\n' "$BRANCH"
+  printf 'Generated by `.claude/hooks/session-handoff.sh` from `git status` and\n'
+  printf '`git diff --stat`. It reports only — it never edits code and never blocks.\n\n'
+
+  printf -- '---\n\n## Working tree\n\n'
+  if [ -n "$STATUS" ]; then
+    printf '```\n%s\n```\n\n' "$STATUS"
+  else
+    printf 'Clean.\n\n'
+  fi
+
+  if [ -n "$STAT" ]; then
+    printf '## Uncommitted diff\n\n```\n%s\n```\n\n' "$STAT"
+  fi
+  if [ -n "$STAGED" ]; then
+    printf '## Staged\n\n```\n%s\n```\n\n' "$STAGED"
+  fi
+  if [ -n "$COMMITS" ]; then
+    printf '## Commits on this branch (vs `%s`)\n\n```\n%s\n```\n\n' "$BASE" "$COMMITS"
+  fi
+
+  printf '## Files touched\n\n```\n%s\n```\n\n' "$CHANGED"
+
+  printf -- '---\n\n## Documentation drift check\n%s\n\n' "$FLAGS"
+
+  printf -- '---\n\n## Before the next session\n\n'
+  printf -- '- [ ] Resolve every drift flag above, or note why it does not apply.\n'
+  printf -- '- [ ] Run `/qa` — build, format, tests, lint, dependency audit, secret scan.\n'
+  printf -- '- [ ] Run `/review` on the diff.\n'
+  printf -- '- [ ] Confirm no secret, real hostname, or real project id entered the tree.\n'
+  printf -- '- [ ] A push still needs explicit human approval — see `.claude/standards/git-approval-policy.md`.\n'
+} > "$OUT" 2>/dev/null || exit 0
+
+printf '[session-handoff] wrote %s\n' "${OUT#$ROOT/}" >&2
+exit 0

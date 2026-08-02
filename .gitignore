@@ -1,0 +1,163 @@
+# ---------------------------------------------------------------------------
+# DO NOT IGNORE `.claude/`
+#
+# The agentic harness (settings, hooks, commands, standards, agents) ships
+# committed so every developer and every CI run gets identical guardrails.
+# Never add `.claude/` — or any path inside it — to this file.
+# The only exception is `.claude/settings.local.json`, which is per-developer
+# machine state and is listed below.
+# ---------------------------------------------------------------------------
+.claude/settings.local.json
+
+# ---- Secrets and local configuration (never commit these) ----
+.env
+.env.*
+!.env.example
+*.env.local
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.pfx
+*.p12
+*.pem
+!**/testdata/*.pem
+credentials.json
+gha-creds-*.json
+
+# ---- .NET ----
+bin/
+obj/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+build/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+project.lock.json
+project.fragment.lock.json
+
+# .NET design-time BuildHost quirk on macOS (directories literally named "bin\Debug")
+bin\\Debug/
+**/BuildHost-*/
+
+# ---- .NET test and coverage output ----
+TestResults/
+[Tt]est[Rr]esult*/
+coverage/
+coverage*.json
+coverage*.xml
+coverage*.info
+*.trx
+*.coverage
+*.coveragexml
+*.received.*
+BenchmarkDotNet.Artifacts/
+
+# ---- Static analysis tooling ----
+.sonarqube/
+.sonar/
+.scannerwork/
+*.sarif
+
+# ---- Node / Nx / Angular ----
+node_modules/
+dist/
+dist-ssr/
+tmp/
+out-tsc/
+.angular/
+.nx/
+.nx/cache
+.nx/workspace-data
+.vite/
+vite.config.*.timestamp*
+vitest.config.*.timestamp*
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+
+# ---- Test output (frontend) ----
+test-results/
+playwright-report/
+playwright/.cache/
+blob-report/
+.playwright/
+.playwright-mcp/
+
+# ---- Infrastructure as code ----
+# Terraform state, plans, and provider binaries are never committed.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Real variable values are environment-specific and often sensitive.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+# Bicep parameter files with real values.
+*.parameters.json
+!*.parameters.example.json
+
+# ---- IDEs and editors ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+*.sublime-workspace
+*.sublime-project
+*.swp
+*.swo
+*~
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# ---- OS ----
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ---- Explicitly tracked artefacts (do NOT ignore) ----
+# EF Core migrations, the generated OpenAPI client types, and session handoffs are
+# source-controlled deliverables. These negations exist so a broader rule above can
+# never accidentally swallow them.
+!src/backend/src/*/Migrations/
+!src/frontend/libs/data-access/api-types/src/
+!docs/handoff/

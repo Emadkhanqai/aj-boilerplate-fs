@@ -1,0 +1,13 @@
+/*
+ * App-level stylesheet entry — the single global stylesheet, pulled in once for the whole app
+ * (see `styles` in `project.json`).
+ *
+ * Import ORDER matters: tokens first (the custom properties + element base styles everything
+ * else reads), then the icon font, then the component classes that consume the tokens. Reorder
+ * these and component rules will resolve against undefined custom properties.
+ *
+ * See `DESIGN.md` at the frontend root before changing any value here.
+ */
+@import './design/tokens.css';
+@import 'primeicons/primeicons.css';
+@import './design/components.css';

@@ -1,0 +1,122 @@
+<div class="page-head">
+  <div>
+    <h2>{{ isEdit() ? 'Edit item' : 'New item' }}</h2>
+    <p class="sub">
+      A typed reactive form with per-field validation and optimistic-concurrency handling.
+    </p>
+  </div>
+</div>
+
+<section class="panel">
+  @if (itemQuery.isPending() && isEdit()) {
+    <!-- LOADING state. -->
+    <div class="load-block" role="status" aria-live="polite">Loading item…</div>
+  } @else if (itemQuery.isError()) {
+    <!-- ERROR state. -->
+    <div class="error-block" role="alert">
+      <strong>We couldn't load this item.</strong>
+      <p>{{ itemQuery.error().message }}</p>
+      <div class="form-actions">
+        <p-button label="Back to items" severity="secondary" (onClick)="cancel()" />
+      </div>
+    </div>
+  } @else {
+    <div class="panel-body">
+      @if (conflict()) {
+        <!-- The concurrency pattern this boilerplate teaches. Tell the user plainly that
+             someone else changed the record, and offer the only safe recovery. -->
+        <p-message severity="warn" [closable]="false" styleClass="w-full" data-testid="conflict-banner">
+          Someone else changed this item while you were editing it. Reload to see their version —
+          your changes here have not been saved.
+        </p-message>
+        <div class="form-actions">
+          <p-button
+            label="Reload current values"
+            icon="pi pi-refresh"
+            severity="warn"
+            data-testid="conflict-reload"
+            (onClick)="reloadFromServer()"
+          />
+        </div>
+      } @else if (saveError(); as message) {
+        <p-message severity="error" [closable]="false" styleClass="w-full">{{ message }}</p-message>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="save()" novalidate>
+        <div class="form-grid two">
+          <div class="field">
+            <label for="item-name">Name<span class="req" aria-hidden="true">*</span></label>
+            <input
+              id="item-name"
+              pInputText
+              formControlName="name"
+              data-testid="item-name"
+              autocomplete="off"
+              [attr.aria-invalid]="showError('name') ? 'true' : null"
+              [attr.aria-describedby]="showError('name') ? 'item-name-error' : null"
+            />
+            @if (showError('name')) {
+              <span id="item-name-error" class="err" role="alert">
+                {{
+                  form.controls.name.hasError('required')
+                    ? 'Name is required.'
+                    : 'Name must be 200 characters or fewer.'
+                }}
+              </span>
+            }
+          </div>
+
+          <div class="field">
+            <label for="item-status">Status<span class="req" aria-hidden="true">*</span></label>
+            <p-select
+              inputId="item-status"
+              formControlName="status"
+              [options]="statusOptions"
+              optionLabel="label"
+              optionValue="value"
+              [filter]="true"
+              filterBy="label"
+              data-testid="item-status"
+            />
+          </div>
+
+          <div class="field span-2">
+            <label for="item-description">Description</label>
+            <textarea
+              id="item-description"
+              pTextarea
+              rows="4"
+              formControlName="description"
+              data-testid="item-description"
+              [attr.aria-invalid]="showError('description') ? 'true' : null"
+              [attr.aria-describedby]="showError('description') ? 'item-description-error' : null"
+            ></textarea>
+            <span class="hint">Optional. Up to 1000 characters.</span>
+            @if (showError('description')) {
+              <span id="item-description-error" class="err" role="alert">
+                Description must be 1000 characters or fewer.
+              </span>
+            }
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <p-button
+            type="submit"
+            [label]="saveMutation.isPending() ? 'Saving…' : isEdit() ? 'Save changes' : 'Create item'"
+            icon="pi pi-check"
+            data-testid="item-save"
+            [disabled]="saveMutation.isPending() || conflict()"
+          />
+          <p-button
+            type="button"
+            label="Cancel"
+            severity="secondary"
+            [text]="true"
+            (onClick)="cancel()"
+          />
+        </div>
+      </form>
+    </div>
+  }
+</section>

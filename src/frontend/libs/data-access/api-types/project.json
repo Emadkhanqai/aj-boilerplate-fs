@@ -1,0 +1,19 @@
+{
+  "name": "api-types",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/data-access/api-types/src",
+  "projectType": "library",
+  "tags": ["scope:data-access"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/data-access/api-types",
+        "main": "libs/data-access/api-types/src/index.ts",
+        "tsConfig": "libs/data-access/api-types/tsconfig.lib.json",
+        "assets": ["libs/data-access/api-types/*.md"]
+      }
+    }
+  }
+}

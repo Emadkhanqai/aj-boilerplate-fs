@@ -1,0 +1,146 @@
+<div class="page-head">
+  <div>
+    <h2>Items</h2>
+    <p class="sub">
+      The sample feature. A server-paged, searchable list — copy the shape, then delete the
+      library.
+    </p>
+  </div>
+  <span class="spacer"></span>
+  @if (canCreate()) {
+    <p-button label="New item" icon="pi pi-plus" routerLink="/items/new" data-testid="new-item" />
+  }
+</div>
+
+<section class="panel">
+  <div class="filter-bar">
+    <div class="field">
+      <label for="item-search">Search</label>
+      <p-iconfield>
+        <p-inputicon styleClass="pi pi-search" />
+        <input
+          id="item-search"
+          pInputText
+          type="search"
+          placeholder="Search by name…"
+          data-testid="item-search"
+          [ngModel]="searchInput()"
+          (ngModelChange)="searchInput.set($event)"
+        />
+      </p-iconfield>
+    </div>
+
+    <div class="field">
+      <label for="item-status">Status</label>
+      <p-select
+        inputId="item-status"
+        [options]="statusOptions"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Any status"
+        [showClear]="true"
+        [filter]="true"
+        filterBy="label"
+        [ngModel]="statusFilter()"
+        (ngModelChange)="statusFilter.set($event)"
+      />
+    </div>
+  </div>
+
+  @if (itemsQuery.isError()) {
+    <!-- ERROR state. -->
+    <div class="error-block" role="alert">
+      <strong>We couldn't load these items.</strong>
+      <p>{{ itemsQuery.error().message }}</p>
+      <div class="form-actions">
+        <p-button label="Try again" icon="pi pi-refresh" severity="secondary" (onClick)="retry()" />
+      </div>
+    </div>
+  } @else if (!itemsQuery.isPending() && rows().length === 0) {
+    <!-- EMPTY state. -->
+    <div class="panel-body">
+      <app-empty-state
+        heading="No items match"
+        message="Try a different search term, or clear the status filter."
+      >
+        @if (canCreate()) {
+          <p-button label="New item" icon="pi pi-plus" routerLink="/items/new" />
+        }
+      </app-empty-state>
+    </div>
+  } @else {
+    <!-- LOADING + SUCCESS states: the table renders skeleton rows while `loading` is true. -->
+    <p-table
+      [value]="rows()"
+      [lazy]="true"
+      [paginator]="true"
+      [rows]="pageSize()"
+      [totalRecords]="total()"
+      [first]="(page() - 1) * pageSize()"
+      [rowsPerPageOptions]="[10, 20, 50]"
+      [loading]="itemsQuery.isPending()"
+      [showLoader]="true"
+      dataKey="id"
+      styleClass="p-datatable-sm"
+      currentPageReportTemplate="{first}–{last} of {totalRecords}"
+      [showCurrentPageReport]="true"
+      (onLazyLoad)="onLazyLoad($event)"
+    >
+      <ng-template pTemplate="header">
+        <tr>
+          <th scope="col" pSortableColumn="name">Name <p-sortIcon field="name" /></th>
+          <th scope="col">Description</th>
+          <th scope="col" pSortableColumn="status">Status <p-sortIcon field="status" /></th>
+          <th scope="col" pSortableColumn="createdAt">Created <p-sortIcon field="createdAt" /></th>
+          <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
+        </tr>
+      </ng-template>
+
+      <ng-template pTemplate="body" let-item>
+        <tr data-testid="item-row">
+          <td>
+            <a [routerLink]="['/items', item.id]">{{ item.name }}</a>
+          </td>
+          <td>{{ item.description ?? '—' }}</td>
+          <td><app-status-pill [status]="item.status" /></td>
+          <td>{{ formatWhen(item.createdAt) }}</td>
+          <td class="col-actions">
+            @if (canEdit()) {
+              <p-button
+                icon="pi pi-pencil"
+                severity="secondary"
+                [text]="true"
+                [rounded]="true"
+                [ariaLabel]="'Edit ' + item.name"
+                (onClick)="openItem(item)"
+              />
+            }
+            @if (canDelete()) {
+              <p-button
+                icon="pi pi-trash"
+                severity="danger"
+                [text]="true"
+                [rounded]="true"
+                [ariaLabel]="'Delete ' + item.name"
+                (onClick)="askDelete(item)"
+              />
+            }
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  }
+</section>
+
+@if (pendingDelete(); as item) {
+  <app-confirm-dialog
+    title="Delete this item?"
+    [message]="'“' + item.name + '” will be permanently removed. This cannot be undone.'"
+    confirmLabel="Delete"
+    [danger]="true"
+    [busy]="deleteMutation.isPending()"
+    [error]="deleteError()"
+    (confirm)="confirmDelete()"
+    (close)="cancelDelete()"
+  />
+}

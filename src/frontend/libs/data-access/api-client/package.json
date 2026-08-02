@@ -1,0 +1,11 @@
+{
+  "name": "@aj-boilerplate/data-access/api-client",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/core": "^21.2.0",
+    "@angular/common": "~21.2.0",
+    "rxjs": "~7.8.0",
+    "@aj-boilerplate/data-access/api-types": "0.0.1"
+  },
+  "sideEffects": false
+}

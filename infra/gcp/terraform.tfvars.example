@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and fill in. `.tfvars` files are gitignored — real values
+# never get committed. In CI these come from repository variables as TF_VAR_* instead.
+#
+# Nothing in this file is a real project, repository, or image.
+
+project_id        = "your-project-id"
+region            = "europe-west1"
+environment       = "dev" # dev | staging | prod
+name_prefix       = "app" # 12 characters or fewer
+github_repository = "your-org/your-repo"
+
+# Push the image to the Artifact Registry repository this configuration creates, then
+# reference it by digest for a reproducible deployment.
+api_image = "europe-west1-docker.pkg.dev/your-project-id/app-dev-containers/api:latest"
+
+# --- Sizing. Defaults suit dev; raise them for staging and prod. ---
+# sql_tier             = "db-custom-2-7680"
+# sql_disk_size_gb     = 20
+# redis_memory_size_gb = 1
+# api_min_instances    = 0
+# api_max_instances    = 4
+
+# --- Networking ---
+# Each environment needs its own non-overlapping /28 for the VPC connector.
+# network_name   = "default"
+# connector_cidr = "10.8.0.0/28"
+
+# labels = {
+#   team = "your-team"
+# }

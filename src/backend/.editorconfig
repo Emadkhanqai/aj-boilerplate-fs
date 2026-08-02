@@ -1,0 +1,29 @@
+# Backend-wide analyzer configuration.
+# These IDE* style rules are INFO-level stylistic preferences that add noise on fluent
+# builder APIs (EF Core / DI) and idiomatic code. They are not correctness issues, so they
+# are turned off for both the build and the static-analysis scan. Correctness/security rules
+# (csharpsquid, CA safety rules) remain fully enforced.
+
+root = true
+
+[*.cs]
+# "Expression value is never used" — fires on every fluent config call; pure noise.
+dotnet_diagnostic.IDE0058.severity = none
+# Constructor/method body style — we prefer explicit block/expression bodies contextually.
+dotnet_diagnostic.IDE0021.severity = none
+dotnet_diagnostic.IDE0022.severity = none
+# "Use primary constructor" — we keep explicit constructors for clarity.
+dotnet_diagnostic.IDE0290.severity = none
+# Collection-initialization / target-typed-new style preferences.
+dotnet_diagnostic.IDE0028.severity = none
+dotnet_diagnostic.IDE0300.severity = none
+dotnet_diagnostic.IDE0301.severity = none
+dotnet_diagnostic.IDE0305.severity = none
+# "if can be simplified to expression" — readability preference.
+dotnet_diagnostic.IDE0046.severity = none
+# "Add parentheses for clarity" — style preference.
+dotnet_diagnostic.IDE0048.severity = none
+
+[tests/**.cs]
+# Test readability: constant array args and static-readonly hints are noise in tests.
+dotnet_diagnostic.CA1861.severity = none

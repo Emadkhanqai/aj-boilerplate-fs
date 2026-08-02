@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "_comment": [
+    "Copy to main.parameters.json and fill in. Parameter files with real values are",
+    "gitignored. In CI these are passed inline from repository variables instead.",
+    "Nothing here is a real subscription, tenant, principal, or image.",
+    "There is no password parameter: the SQL server uses Entra-only authentication."
+  ],
+  "parameters": {
+    "environment": {
+      "value": "dev"
+    },
+    "location": {
+      "value": "westeurope"
+    },
+    "resourcePrefix": {
+      "value": "app"
+    },
+    "githubRepository": {
+      "value": "your-org/your-repo"
+    },
+    "apiImage": {
+      "value": ""
+    },
+    "sqlAdminObjectId": {
+      "value": "00000000-0000-0000-0000-000000000000"
+    },
+    "sqlAdminLogin": {
+      "value": "your-dba-group@example.com"
+    },
+    "tags": {
+      "value": {
+        "team": "your-team"
+      }
+    }
+  }
+}

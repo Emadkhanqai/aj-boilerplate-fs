@@ -1,0 +1,464 @@
+name: Backend CI
+
+# Gates, in order of how fast they fail:
+#   restore → format → build (warnings as errors) → unit + architecture tests
+#          → migration validation + integration tests (with coverage)
+#          → quality gate → dependency vulnerabilities → secret scan → code scanning
+#
+# Nothing here needs a cloud credential. See deploy.yml for the deployment path, which uses
+# GitHub OIDC and holds no long-lived credentials either.
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/**'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/backend/**'
+      - '.github/workflows/backend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  SOLUTION: src/backend/AjBoilerplate.slnx
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Gate 1 — restore. Fails fast on a bad feed or a broken project reference,
+  # before any slower job spends runner time.
+  # --------------------------------------------------------------------------
+  restore:
+    name: Restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+  # --------------------------------------------------------------------------
+  # Gate 2 — formatting. .editorconfig defines the rules; this only asserts the
+  # tree already conforms. CI never auto-fixes.
+  # --------------------------------------------------------------------------
+  format:
+    name: Format verification
+    needs: restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+      # `shell: bash` is required, not cosmetic. GitHub Actions only runs a step as
+      # `bash -eo pipefail {0}` when the shell is named explicitly; the implicit default is
+      # `bash -e {0}` with no pipefail, which would let a failing command hide behind `tee`'s
+      # own successful exit code. Every piped step below names the shell for this reason.
+      - name: dotnet format --verify-no-changes
+        shell: bash
+        run: dotnet format "$SOLUTION" --verify-no-changes --verbosity diagnostic | tee format.log
+
+      - name: Upload format log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: format-verification-log
+          path: format.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 3 — build. Directory.Build.props already sets TreatWarningsAsErrors;
+  # -warnaserror here is defence in depth, so CI cannot silently tolerate a
+  # future change that weakens that property.
+  # --------------------------------------------------------------------------
+  build:
+    name: Build (warnings as errors)
+    needs: restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+      - name: dotnet build -warnaserror
+        shell: bash
+        run: dotnet build "$SOLUTION" --no-restore --configuration Release -warnaserror | tee build.log
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 4 — unit and architecture tests. No external dependencies, so they run
+  # in one job and finish in well under a minute.
+  #
+  # The architecture suite enforces the layer dependency rule (ADR-0001). If it
+  # fails, the fix is the design, never the test.
+  # --------------------------------------------------------------------------
+  unit-tests:
+    name: Unit and architecture tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+      - name: dotnet test AjBoilerplate.UnitTests
+        run: |
+          dotnet test src/backend/tests/AjBoilerplate.UnitTests \
+            --no-restore \
+            --collect:"XPlat Code Coverage" \
+            --logger "trx;LogFileName=unit-tests.trx" \
+            --results-directory ./TestResults
+
+      - name: dotnet test AjBoilerplate.ArchitectureTests
+        run: |
+          dotnet test src/backend/tests/AjBoilerplate.ArchitectureTests \
+            --no-restore \
+            --logger "trx;LogFileName=architecture-tests.trx" \
+            --results-directory ./TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-and-architecture-test-results
+          path: TestResults/**
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 5 — migrations and integration tests.
+  #
+  # THERE IS NO SQL SERVER SERVICE CONTAINER HERE, deliberately. The integration
+  # suite owns its own database: `SqlServerFixture` starts a SQL Server container
+  # via Testcontainers, applies the migrations to it, and tears it down. One
+  # mechanism, identical on a laptop and on this runner, with nothing to keep in
+  # sync — and, because Testcontainers generates the throwaway password itself,
+  # no credential in this file and no allowlist entry in .github/gitleaks.toml
+  # pretending a committed password is fine.
+  #
+  # That fixture is also what proves the migrations apply to a genuinely empty
+  # database, on every run. The step below adds the other half: that they can be
+  # rendered as the idempotent SQL script a DBA actually deploys. It needs no
+  # database, so it fails fast and for one clear reason.
+  #
+  # Docker is available on GitHub-hosted runners; a self-hosted runner needs a
+  # working Docker socket for this job.
+  # --------------------------------------------------------------------------
+  integration-tests:
+    name: Migration validation and integration tests
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # CI-only value for an ephemeral environment. Real configuration lives in the provider's
+      # secret store and is never present in this file. The database connection string is not set
+      # at all: the test fixture injects its container's own.
+      CLOUD_PROVIDER: 'gcp'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+      # Build the whole solution first, then pass --no-build to `dotnet ef`. `dotnet ef` would
+      # otherwise build the startup project on its own, bypassing the solution, which is
+      # unreliable straight after a solution-level restore on a fresh checkout.
+      - name: dotnet build
+        shell: bash
+        run: dotnet build "$SOLUTION" --no-restore | tee ef-build.log
+
+      - name: Install dotnet-ef
+        run: |
+          dotnet tool install --global dotnet-ef
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      # Renders the migrations as the idempotent SQL script a DBA reviews and deploys. The
+      # standards forbid auto-applying migrations on production startup, so THIS artefact — not
+      # `database update` — is what actually ships; a migration that cannot be scripted is broken
+      # even if it applies. Needs no database, so it fails fast and for exactly one reason.
+      #
+      # The complementary half — that the migrations apply cleanly to a genuinely empty database —
+      # is covered by SqlServerFixture on every integration run.
+      - name: Migration validation (idempotent script)
+        shell: bash
+        run: |
+          dotnet ef migrations script \
+            --idempotent \
+            --project         src/backend/src/AjBoilerplate.Infrastructure \
+            --startup-project src/backend/src/AjBoilerplate.Api \
+            --no-build \
+            --output migrations.sql | tee migration-script.log
+
+      # Starts its own SQL Server container via Testcontainers — no service container, and no
+      # connection string in this file.
+      - name: dotnet test AjBoilerplate.IntegrationTests
+        run: |
+          dotnet test src/backend/tests/AjBoilerplate.IntegrationTests \
+            --no-restore \
+            --no-build \
+            --collect:"XPlat Code Coverage" \
+            --logger "trx;LogFileName=integration-tests.trx" \
+            --results-directory ./TestResults
+
+      - name: Upload integration artefacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            TestResults/**
+            migrations.sql
+            migration-script.log
+            ef-build.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 6 — the quality gate.
+  #
+  # Thresholds live in the SonarQube quality gate on the server, not here:
+  #   · zero new Blocker, Critical, or Major issues
+  #   · ≥80% coverage on new code
+  # `sonar.qualitygate.wait=true` makes this job fail when that gate fails.
+  #
+  # The `if:` guard exists so a fresh clone of the boilerplate is not permanently
+  # red before a SonarQube server has been configured. REMOVE IT once you have
+  # set SONAR_HOST_URL — a gate that can silently skip itself is not a gate.
+  # --------------------------------------------------------------------------
+  quality-gate:
+    name: SonarQube quality gate
+    needs: build
+    if: vars.SONAR_HOST_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # No database service container here either: this job runs the full test suite for coverage,
+      # and the integration suite starts its own SQL Server via Testcontainers. See gate 5.
+      CLOUD_PROVIDER: 'gcp'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so SonarQube can attribute blame and compute "new code" correctly.
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # The SonarScanner for .NET runs on the JVM.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: sonar-cache-${{ runner.os }}
+
+      - name: Install SonarScanner and the coverage converter
+        run: |
+          dotnet tool install --global dotnet-sonarscanner
+          dotnet tool install --global dotnet-coverage
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Analyse, build, test, and wait for the gate
+        shell: bash
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+        run: |
+          dotnet sonarscanner begin \
+            /k:"$SONAR_PROJECT_KEY" \
+            /d:sonar.host.url="$SONAR_HOST_URL" \
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml \
+            /d:sonar.qualitygate.wait=true
+
+          dotnet build "$SOLUTION" --no-incremental
+
+          dotnet-coverage collect \
+            "dotnet test $SOLUTION --no-build" \
+            -f xml -o coverage.xml
+
+          dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
+
+  # --------------------------------------------------------------------------
+  # Gate 7 — known-vulnerable dependencies, direct and transitive.
+  # --------------------------------------------------------------------------
+  dependency-audit:
+    name: Vulnerable package audit
+    needs: restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: dotnet restore
+        run: dotnet restore "$SOLUTION"
+
+      # `dotnet list package --vulnerable` exits 0 even when it finds something, so the
+      # output has to be inspected. Anything at moderate severity or above fails the job.
+      - name: dotnet list package --vulnerable
+        shell: bash
+        run: |
+          dotnet list "$SOLUTION" package --vulnerable --include-transitive \
+            | tee vulnerable.log
+          if grep -qiE '\|\s+(Moderate|High|Critical)\s+\|' vulnerable.log; then
+            echo "::error::Vulnerable packages found at Moderate severity or above."
+            exit 1
+          fi
+          echo "No vulnerable packages at Moderate severity or above."
+
+      - name: Upload audit log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vulnerable-package-audit
+          path: vulnerable.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 8 — secret scanning. These repositories are public; a leaked credential
+  # is an incident, not a finding.
+  # --------------------------------------------------------------------------
+  secret-scan:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only required for organisation-owned private repositories. Free for public ones.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Extends the default ruleset; allowlists only documented non-credentials.
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.github/gitleaks.toml
+
+  # --------------------------------------------------------------------------
+  # Gate 9 — CodeQL code scanning.
+  # --------------------------------------------------------------------------
+  code-scanning:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-and-quality
+
+      # Manual build rather than autobuild: autobuild guesses, and this solution is a
+      # single explicit command.
+      - name: Build for analysis
+        run: dotnet build "$SOLUTION"
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:csharp'

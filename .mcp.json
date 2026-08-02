@@ -1,0 +1,66 @@
+{
+  "_readme": [
+    "MCP servers for this project. This file is COMMITTED and the repository is PUBLIC.",
+    "Every credentialed value is an environment-variable reference. Never paste a real",
+    "token, project id, subscription id, tenant id, or hostname into this file.",
+    "",
+    "CLOUD: the 'gcp' and 'azure' servers below are the two sides of the CLOUD_PROVIDER",
+    "switch (see .claude/standards/cloud.md). Enable exactly the ONE that matches your",
+    "CLOUD_PROVIDER and remove or disable the other - running both just wastes a",
+    "connection and makes tool selection ambiguous.",
+    "",
+    "Required environment variables, set per developer, never committed:",
+    "  SONAR_HOST_URL, SONAR_TOKEN            - the SonarQube gate",
+    "  CONTEXT7_API_KEY                       - Context7 documentation lookup",
+    "  GCP_PROJECT_ID                         - when CLOUD_PROVIDER=gcp",
+    "  AZURE_SUBSCRIPTION_ID, AZURE_TENANT_ID - when CLOUD_PROVIDER=azure"
+  ],
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest"]
+    },
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    },
+    "sonarqube": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "sonarqube-mcp-server@latest"],
+      "env": {
+        "SONARQUBE_URL": "${SONAR_HOST_URL:-http://localhost:9000}",
+        "SONARQUBE_TOKEN": "${SONAR_TOKEN}",
+        "SONARQUBE_ORG": "${SONAR_ORG:-}"
+      }
+    },
+    "gcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "gcp-mcp@latest"],
+      "env": {
+        "GOOGLE_CLOUD_PROJECT": "${GCP_PROJECT_ID}",
+        "CLOUDSDK_CORE_PROJECT": "${GCP_PROJECT_ID}",
+        "GOOGLE_APPLICATION_CREDENTIALS": "${GOOGLE_APPLICATION_CREDENTIALS:-}"
+      }
+    },
+    "azure": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@azure/mcp@latest", "server", "start"],
+      "env": {
+        "AZURE_SUBSCRIPTION_ID": "${AZURE_SUBSCRIPTION_ID}",
+        "AZURE_TENANT_ID": "${AZURE_TENANT_ID}"
+      }
+    }
+  }
+}

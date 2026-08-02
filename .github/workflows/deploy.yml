@@ -1,0 +1,88 @@
+name: Deploy
+
+# Promotes infrastructure through dev → staging → prod, one environment at a time.
+#
+# Which infrastructure runs is decided by the CLOUD_PROVIDER repository variable —
+# the same switch the application reads at runtime (see ADR-0002):
+#
+#   CLOUD_PROVIDER=gcp    → infra/gcp   (Terraform)
+#   CLOUD_PROVIDER=azure  → infra/azure (Bicep)
+#
+# The approval gates are GitHub Environment protection rules, not steps in this file.
+# Add required reviewers to `staging` and `prod` under Settings → Environments; without
+# them this workflow will promote straight through to production unreviewed.
+#
+# Cloud authentication is GitHub OIDC. There are no long-lived cloud credentials in this
+# workflow, and none may ever be added. See .github/workflows/deploy-environment.yml.
+#
+# Required repository variables:
+#   CLOUD_PROVIDER, and then either
+#   GCP_PROJECT_ID · GCP_REGION · TF_STATE_BUCKET
+#   AZURE_LOCATION · AZURE_NAME_PREFIX
+# Required repository secrets:
+#   GCP_WORKLOAD_IDENTITY_PROVIDER · GCP_SERVICE_ACCOUNT
+#   AZURE_CLIENT_ID · AZURE_TENANT_ID · AZURE_SUBSCRIPTION_ID
+# All of these are listed in README.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/workflows/deploy-environment.yml'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply the change. Unchecked runs plan / what-if only.'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+# Never let two deployments race for the same state lock.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  dev:
+    name: dev
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: dev
+      cloud_provider: ${{ vars.CLOUD_PROVIDER }}
+      apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+
+  staging:
+    name: staging
+    needs: dev
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: staging
+      cloud_provider: ${{ vars.CLOUD_PROVIDER }}
+      apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+
+  prod:
+    name: prod
+    needs: staging
+    uses: ./.github/workflows/deploy-environment.yml
+    with:
+      environment: prod
+      cloud_provider: ${{ vars.CLOUD_PROVIDER }}
+      apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write

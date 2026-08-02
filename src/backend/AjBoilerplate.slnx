@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AjBoilerplate.Api/AjBoilerplate.Api.csproj" />
+    <Project Path="src/AjBoilerplate.Application/AjBoilerplate.Application.csproj" />
+    <Project Path="src/AjBoilerplate.Contracts/AjBoilerplate.Contracts.csproj" />
+    <Project Path="src/AjBoilerplate.Domain/AjBoilerplate.Domain.csproj" />
+    <Project Path="src/AjBoilerplate.Infrastructure/AjBoilerplate.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AjBoilerplate.ArchitectureTests/AjBoilerplate.ArchitectureTests.csproj" />
+    <Project Path="tests/AjBoilerplate.IntegrationTests/AjBoilerplate.IntegrationTests.csproj" />
+    <Project Path="tests/AjBoilerplate.UnitTests/AjBoilerplate.UnitTests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- Domain factory/transition methods that are deliberately not part of the Domain's public
+         surface, but ARE driven from the Application layer and asserted directly by unit tests. -->
+    <InternalsVisibleTo Include="AjBoilerplate.Application" />
+    <InternalsVisibleTo Include="AjBoilerplate.Infrastructure" />
+    <InternalsVisibleTo Include="AjBoilerplate.UnitTests" />
+  </ItemGroup>
+
+</Project>

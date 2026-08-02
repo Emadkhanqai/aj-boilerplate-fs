@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Feeds Swagger's IncludeXmlComments (Program.cs) with the /// summaries already on
+         controller actions. CS1591 ("missing XML comment") would otherwise become a build error
+         under Directory.Build.props' TreatWarningsAsErrors for every public member across this
+         whole project that lacks one — most of which (DI wiring, internal helpers) were never
+         meant to be documented. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="Serilog.AspNetCore" Version="9.0.0" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.2" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.1" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
+    <!-- Cloud secret stores as CONFIGURATION SOURCES (populate IConfiguration at boot). The
+         request-time ISecretsProvider implementations live in AjBoilerplate.Infrastructure. -->
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+    <PackageReference Include="Azure.Extensions.AspNetCore.Configuration.Secrets" Version="1.4.0" />
+    <PackageReference Include="Google.Cloud.SecretManager.V1" Version="2.8.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AjBoilerplate.Application\AjBoilerplate.Application.csproj" />
+    <ProjectReference Include="..\AjBoilerplate.Infrastructure\AjBoilerplate.Infrastructure.csproj" />
+    <ProjectReference Include="..\AjBoilerplate.Contracts\AjBoilerplate.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

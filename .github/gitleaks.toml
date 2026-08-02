@@ -1,0 +1,29 @@
+# Gitleaks configuration.
+#
+# Referenced by the secret-scan jobs via GITLEAKS_CONFIG. Extends the default ruleset
+# rather than replacing it — every built-in rule still applies.
+#
+# Add to the allowlist ONLY for values that are provably not credentials: throwaway
+# strings for ephemeral CI containers, obvious placeholders, and generated test
+# fixtures. A real secret that is "already rotated" or "only in dev" does not belong
+# here; remove it from the history and rotate it instead.
+
+title = "Repository secret scanning"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented non-credentials"
+
+paths = [
+  # Example configuration files. Every value in them is a placeholder.
+  '''infra/gcp/terraform\.tfvars\.example''',
+  '''infra/azure/main\.parameters\.example\.json''',
+]
+
+# No regex allowlist. There is deliberately nothing here to exempt: the backend CI workflow
+# no longer runs a SQL Server service container with a committed password — the integration
+# suite starts its own container through Testcontainers, which generates a throwaway
+# credential at run time. Keep it that way. An allowlist entry outlives the reason it was
+# added, and the next person to need one will copy this pattern rather than question it.

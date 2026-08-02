@@ -1,0 +1,268 @@
+name: Frontend CI
+
+# Gates, in order of how fast they fail:
+#   install → lint → typecheck → unit tests (coverage) → production build
+#           → dependency audit → Playwright E2E → secret scan → code scanning
+
+on:
+  pull_request:
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/frontend/**'
+      - '.github/workflows/frontend-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: src/frontend
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Gate 1 — install. A reproducible `npm ci` against the committed lockfile.
+  # --------------------------------------------------------------------------
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+  # --------------------------------------------------------------------------
+  # Gate 2 — lint, typecheck, and unit tests with coverage.
+  #
+  # These share a job because each is seconds of work after the install, and
+  # splitting them would pay the `npm ci` cost three times over.
+  # --------------------------------------------------------------------------
+  verify:
+    name: Lint, typecheck, unit tests
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: nx-set-shas needs it to compute the affected-project base.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      # Sets NX_BASE/NX_HEAD correctly for both `pull_request` (diff against the merge base)
+      # and `push` (diff against the previous commit). A plain `--base=origin/main` breaks on
+      # a push to main itself, where the diff is empty or nonsensical.
+      - uses: nrwl/nx-set-shas@v4
+
+      - name: Lint
+        run: npx nx affected -t lint --parallel=3
+
+      # The `typecheck` target comes from the Nx TypeScript plugin. Where a project does not
+      # define one, type checking is still fully covered by the AOT production build in the
+      # next job — this step reports that honestly rather than silently passing.
+      - name: Typecheck
+        run: |
+          if [ -n "$(npx nx show projects --with-target typecheck)" ]; then
+            npx nx run-many -t typecheck --parallel=3
+          else
+            echo "No project defines a 'typecheck' target."
+            echo "Type checking is covered by the Angular AOT production build (see the 'Build' job)."
+          fi
+
+      - name: Unit tests with coverage
+        run: npx nx affected -t test --parallel=3 --coverage --coverageReporters=lcov --coverageReporters=text-summary
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: src/frontend/coverage/**
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 3 — production build. Also the real typecheck: Angular AOT compiles
+  # every template and every binding.
+  # --------------------------------------------------------------------------
+  build:
+    name: Build (production)
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: nx build web --configuration=production
+        run: npx nx build web --configuration=production
+
+      - name: Upload build output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build-output
+          path: src/frontend/dist/**
+          retention-days: 3
+
+  # --------------------------------------------------------------------------
+  # Gate 4 — dependency audit. Fails on high and critical advisories.
+  # --------------------------------------------------------------------------
+  dependency-audit:
+    name: npm audit
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      # `npm audit` exits non-zero when it finds something at or above the level, which is
+      # exactly what we want. The JSON report is kept so a failure is diagnosable.
+      - name: npm audit --audit-level=high
+        shell: bash
+        run: |
+          npm audit --audit-level=high --json > npm-audit.json || AUDIT_FAILED=1
+          npm audit --audit-level=high || true
+          if [ "${AUDIT_FAILED:-0}" = "1" ]; then
+            echo "::error::npm audit found advisories at high severity or above."
+            exit 1
+          fi
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-report
+          path: src/frontend/npm-audit.json
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 5 — Playwright end-to-end journeys against the production build.
+  # --------------------------------------------------------------------------
+  e2e:
+    name: Playwright E2E
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: nx run web-e2e:e2e
+        run: npx nx run web-e2e:e2e
+
+      # Never add --update-snapshots here. A failing visual diff must fail the job so a human
+      # looks at it; a self-updating baseline asserts nothing.
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            src/frontend/dist/.playwright/**
+            src/frontend/playwright-report/**
+            src/frontend/test-results/**
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 6 — secret scanning. These repositories are public.
+  # --------------------------------------------------------------------------
+  secret-scan:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Only required for organisation-owned private repositories. Free for public ones.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          # Extends the default ruleset; allowlists only documented non-credentials.
+          GITLEAKS_CONFIG: ${{ github.workspace }}/.github/gitleaks.toml
+
+  # --------------------------------------------------------------------------
+  # Gate 7 — CodeQL code scanning.
+  # --------------------------------------------------------------------------
+  code-scanning:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:javascript-typescript'

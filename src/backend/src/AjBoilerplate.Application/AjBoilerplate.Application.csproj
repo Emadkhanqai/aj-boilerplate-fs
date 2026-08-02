@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AjBoilerplate.Domain\AjBoilerplate.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
+    <!-- Abstractions only (no logging provider, no configuration binding): the Application layer
+         may log, but must never own the logging pipeline. -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <!-- Needed only to detect the SQL Server deadlock/unique-constraint error numbers inside a
+         caught DbUpdateException, so a lost race can be translated into a clean idempotent/409
+         result instead of propagating as a raw 500 (see Persistence/). Version pinned to match what
+         EntityFrameworkCore.SqlServer already pulls in transitively via the Infrastructure project,
+         so no version actually changes at runtime. -->
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.1.1" />
+  </ItemGroup>
+
+</Project>

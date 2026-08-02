@@ -1,0 +1,12 @@
+{
+  "name": "@aj-boilerplate/shared/ui",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/common": "~21.2.0",
+    "@angular/core": "^21.2.0",
+    "@aj-boilerplate/data-access/api-client": "0.0.1",
+    "@tanstack/angular-query-experimental": "^5.101.2",
+    "primeng": "^21.1.9"
+  },
+  "sideEffects": false
+}

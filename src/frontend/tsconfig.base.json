@@ -1,0 +1,31 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "es2015",
+    "module": "esnext",
+    "lib": ["es2020", "dom"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "paths": {
+      "@aj-boilerplate/shell": ["./libs/shell/src/index.ts"],
+      "@aj-boilerplate/auth": ["./libs/auth/src/index.ts"],
+      "@aj-boilerplate/data-access/api-types": [
+        "./libs/data-access/api-types/src/index.ts"
+      ],
+      "@aj-boilerplate/data-access/api-client": [
+        "./libs/data-access/api-client/src/index.ts"
+      ],
+      "@aj-boilerplate/shared/ui": ["./libs/shared/ui/src/index.ts"],
+      "@aj-boilerplate/shared/util": ["./libs/shared/util/src/index.ts"],
+      "@aj-boilerplate/feature-items": ["./libs/feature-items/src/index.ts"]
+    }
+  },
+  "exclude": ["node_modules", "tmp"]
+}

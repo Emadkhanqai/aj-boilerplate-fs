@@ -1,0 +1,27 @@
+# Local container run of the built SPA. The app talks to the backend over the shared `app-net`
+# network, by container name (see nginx.conf's proxy_pass).
+#
+# Create the network once per host: `docker network create app-net`.
+#
+# NEVER commit real client IDs, tenant names, or authority URLs here — supply them from your
+# own environment / secret store at deploy time. The values below are placeholders.
+services:
+  web:
+    build: .
+    container_name: app-web
+    restart: unless-stopped
+    ports:
+      - '8080:80'
+    environment:
+      # `dev` renders the built-in role picker with no identity provider. Set to `oidc` and fill
+      # in the three OIDC values to authenticate against a real authority.
+      AUTH_MODE: dev
+      OIDC_CLIENT_ID: ''
+      OIDC_AUTHORITY: ''
+      OIDC_SCOPE: ''
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    external: true

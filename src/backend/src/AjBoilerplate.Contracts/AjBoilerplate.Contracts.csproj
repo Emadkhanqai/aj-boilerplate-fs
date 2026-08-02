@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Feeds Swagger's IncludeXmlComments (AjBoilerplate.Api/Program.cs) with the /// summaries
+         already on request/response DTOs, same reasoning as AjBoilerplate.Api.csproj. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+</Project>

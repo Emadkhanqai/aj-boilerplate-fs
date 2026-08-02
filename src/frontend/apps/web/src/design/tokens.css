@@ -1,0 +1,147 @@
+/*
+ * Design tokens — the single visual source of truth: colours, typography, spacing,
+ * radii, shadows. Component classes live in `components.css`; the PrimeNG theme
+ * preset that mirrors the primary colour lives in `../styles/app-preset.ts`.
+ *
+ * REPLACE THESE VALUES with your product's palette and type scale, then record the
+ * decisions in `DESIGN.md` at the frontend root. Keep the token NAMES — every
+ * component class and the PrimeNG preset read them, so a rename ripples everywhere.
+ *
+ * Bilingual-ready: base styles use logical properties (margin-inline, padding-inline,
+ * inset-inline, text-align:start) so the same rules flip correctly under `dir="rtl"`
+ * when a right-to-left locale ships.
+ */
+
+:root {
+  /* ----- Palette ----- */
+  --ink: #16201c;
+  --paper: #f4f4f1;
+  --panel: #ffffff;
+  --line: #e5e3da;
+  --line-strong: #cfccc0;
+
+  --moss: #1f5c3d;
+  --moss-deep: #143f29;
+  --moss-tint: #e7efe8;
+  --moss-bright: #2b8a5a;
+
+  --amber: #b6622a;
+  --amber-tint: #f6ece2;
+
+  --muted: #6c6f68;
+  --muted-soft: #8d8f88;
+
+  --danger: #9d2b2b;
+  --danger-tint: #fbe9e9;
+
+  --info: #2c5b8a;
+  --info-tint: #e3edf6;
+
+  --shadow: 0 1px 2px rgba(20, 32, 28, 0.05), 0 8px 28px rgba(20, 32, 28, 0.06);
+  --shadow-lift: 0 4px 12px rgba(20, 32, 28, 0.08), 0 16px 40px rgba(20, 32, 28, 0.1);
+
+  --radius: 10px;
+  /* Sidebar width. It is the ceiling the user-chip's name text has to fit inside, so widen it
+     rather than truncating names if your product shows long display names. */
+  --side-w: 264px;
+  /* Shared single-line control height (buttons + text-like inputs/selects), so a `.btn` sitting
+     beside a `pInputText`/`p-select` field in the same flex row lines up exactly instead of the
+     button looking short/tall next to the field. Derived from the
+     input rule's own box (padding: 10px 12px + 1px border, ~14px text) — `.btn`/`.btn-sm` center
+     their content vertically via flex, so pinning `height` here (not just padding) keeps every
+     `.btn*` variant the same height as an input regardless of its own padding/font-size. */
+  --control-h: 40px;
+
+  /* ----- Typography ----- */
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Consolas', monospace;
+
+  /* ----- Spacing scale (4px base) ----- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+a {
+  color: var(--moss);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Numeric / monospace helper for money + reference IDs. */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Visually-hidden but screen-reader-available (a11y). */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Bilingual-ready base: text flows from the inline-start edge in both
+   directions; individual components rely on logical properties too. */
+body {
+  text-align: start;
+}
+
+:focus-visible {
+  outline: 2px solid var(--moss);
+  outline-offset: 2px;
+}

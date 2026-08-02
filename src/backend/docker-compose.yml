@@ -1,0 +1,95 @@
+# Local / QA stack: SQL Server + Redis + the API. Every credential comes from the environment —
+# copy `.env.example` to `.env` and fill it in. No password is ever committed here.
+#
+# Create the shared network once per host so a frontend compose project can reach `app-api` by
+# container name: `docker network create app-net`.
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: app-db
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env}
+    volumes:
+      - app-db-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - app-net
+
+  # Mirrors the managed Redis the cloud targets use. The Redis wire protocol is identical on both
+  # supported clouds, so CLOUD_PROVIDER never branches for the cache — only `infra/` differs.
+  # AddInfrastructure falls back to an in-memory distributed cache when ConnectionStrings:Redis is
+  # unset, so this is not load-bearing locally, but without it the cache does not survive an `api`
+  # restart and does not match a deployed environment.
+  redis:
+    image: redis:7-alpine
+    container_name: app-redis
+    restart: unless-stopped
+    networks:
+      - app-net
+
+  api:
+    build: .
+    container_name: app-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      # IPAddressPreference=IPv4First works around a Microsoft.Data.SqlClient ManagedSni issue on
+      # Linux where connecting by container hostname can fail ("server was not found") even though
+      # the OS resolver and raw TCP both succeed.
+      ConnectionStrings__Default: "Server=app-db;Database=AppDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;"
+      ConnectionStrings__Redis: "app-redis:6379"
+      # gcp | azure — selects the secrets provider and the authN issuer at the composition root.
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gcp}
+      # Enables Swagger UI (Program.cs gates UseSwagger()/UseSwaggerUI() behind IsDevelopment()).
+      ASPNETCORE_ENVIRONMENT: Development
+    ports:
+      - "8080:8080"
+    networks:
+      - app-net
+
+  # One-off: `docker compose --profile tools run --rm migrate` — applies EF Core migrations.
+  # Never started by a plain `docker compose up`: production schema changes are a controlled
+  # release step, not an application-startup side effect.
+  migrate:
+    build:
+      context: .
+      target: build
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # `dotnet ef` without --connection uses AppDbContextFactory (an IDesignTimeDbContextFactory),
+      # which reads APP_DB_CONNECTION — NOT ConnectionStrings__Default (that is only wired into the
+      # running app via Program.cs/DI, read by the `api` service above).
+      APP_DB_CONNECTION: "Server=app-db;Database=AppDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;"
+    working_dir: /src
+    entrypoint: []
+    command: >
+      dotnet ef database update
+      --project src/AjBoilerplate.Infrastructure/AjBoilerplate.Infrastructure.csproj
+      --startup-project src/AjBoilerplate.Api/AjBoilerplate.Api.csproj
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    external: true
+
+volumes:
+  app-db-data:

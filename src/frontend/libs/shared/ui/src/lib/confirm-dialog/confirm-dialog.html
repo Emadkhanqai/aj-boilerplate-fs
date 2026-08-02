@@ -1,0 +1,21 @@
+<p-dialog [visible]="true" [modal]="true" [closable]="false" [style]="{ width: '420px' }">
+  <ng-template pTemplate="header">
+    <h2>{{ title() }}</h2>
+  </ng-template>
+
+  <p>{{ message() }}</p>
+
+  @if (error(); as err) {
+    <p role="alert" class="confirm-error">{{ err }}</p>
+  }
+
+  <ng-template pTemplate="footer">
+    <p-button label="Cancel" severity="secondary" [text]="true" [disabled]="busy()" (onClick)="onClose()" />
+    <p-button
+      [label]="busy() ? 'Working…' : confirmLabel()"
+      [severity]="danger() ? 'danger' : 'primary'"
+      [disabled]="busy()"
+      (onClick)="onConfirm()"
+    />
+  </ng-template>
+</p-dialog>

@@ -1,0 +1,13 @@
+{
+  "name": "@aj-boilerplate/shared/util",
+  "version": "0.0.1",
+  "private": true,
+  "type": "commonjs",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "dependencies": {
+    "tslib": "^2.3.0",
+    "@angular/core": "~21.2.0",
+    "@angular/platform-browser": "~21.2.0"
+  }
+}

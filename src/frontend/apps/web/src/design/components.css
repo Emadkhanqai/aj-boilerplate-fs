@@ -1,0 +1,1937 @@
+/*
+ * Component + layout classes for the application design system. Consumed by the shared UI
+ * primitives (`libs/shared/ui`), the app shell (`libs/shell`), and feature libraries.
+ * Every rule reads its colours/spacing from the custom properties in `tokens.css` — never
+ * hard-code a colour here. Logical properties (margin-inline, inset-inline, text-align:start)
+ * keep the whole sheet RTL-ready for a future right-to-left locale.
+ *
+ * See `DESIGN.md` at the frontend root for the design language this sheet implements.
+ */
+
+/* ===================== BUTTON ===================== */
+.btn {
+  appearance: none;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 18px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  transition: 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* Matches the input/select control box (padding: 10px 12px + 1px border) so a `.btn` beside a
+     `pInputText`/`p-select` field in the same row aligns exactly. Set as `height` (not just
+     padding) so `.btn-sm` — which redeclares only padding/font-size, not height — stays the same
+     height too, without duplicating the value there. */
+  height: var(--control-h);
+}
+.btn-primary {
+  background: var(--moss);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--moss-deep);
+}
+.btn-ghost {
+  background: #fff;
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.btn-ghost:hover {
+  border-color: var(--moss);
+  color: var(--moss);
+}
+.btn-danger {
+  background: #fff;
+  border-color: var(--line-strong);
+  color: var(--danger);
+}
+.btn-danger:hover {
+  background: var(--danger-tint);
+  border-color: var(--danger);
+}
+.btn-amber {
+  background: var(--amber);
+  color: #fff;
+}
+.btn-amber:hover {
+  background: #9c4f1c;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.btn-block {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ===================== PANEL / CARD ===================== */
+.panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  margin-bottom: 22px;
+}
+.panel-head {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.panel-head h3 {
+  font-size: 15px;
+}
+.panel-head .sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.panel-head .spacer {
+  flex: 1;
+}
+/* A panel whose header carries ONLY the `.sub` description line — no `<h3>` — because the tab
+   label directly above it already names the panel. Bump the description up from its usual
+   "secondary caption under a heading" weight since it is now the header's only text. */
+.panel-head-sub-only .sub {
+  font-size: 13px;
+  color: var(--ink);
+  margin-top: 0;
+}
+.panel-body {
+  padding: 20px;
+}
+
+.panel-body.flush {
+  padding: 0;
+}
+
+/* Optional icon swatch in front of a panel heading — used where a panel's subject benefits
+   from an at-a-glance icon (e.g. a tree icon on a hierarchy panel). Not every panel needs one;
+   project it into the heading content rather than adding an `icon` input to the panel itself. */
+.panel-title-icon-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.panel-icon-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+  flex-shrink: 0;
+}
+.panel-icon-box svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ===================== STATUS / ROLE PILLS ===================== */
+.status {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 20px;
+  letter-spacing: 0.04em;
+}
+.s-draft {
+  background: #eeeae0;
+  /* `var(--muted)` (#6c6f68) is 4.25:1 against this pill's cream background — below WCAG 1.4.3's
+     4.5:1 minimum for small text, even though the same token is compliant against the lighter
+     backgrounds most of its ~70 other usages sit on. Overridden locally (not by darkening the
+     shared token) to avoid an unverified visual change everywhere else `--muted` appears. */
+  color: #5c5f58;
+}
+.s-submitted {
+  background: var(--info-tint);
+  color: var(--info);
+}
+.s-review {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+.s-revision {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.s-approved {
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+}
+.s-rejected {
+  background: #f0d6d6;
+  color: var(--danger);
+}
+.s-published {
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+}
+.s-neutral {
+  background: #eeeae0;
+  /* Same fix as `.s-draft` above and for the same reason: `var(--muted)` (#6c6f68) is 4.25:1 on
+     this cream pill — below WCAG 1.4.3's 4.5:1 for 11px text — even though the token is
+     compliant against the lighter backgrounds most of its other uses sit on. */
+  color: #5c5f58;
+}
+
+.pill-role {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+  letter-spacing: 0.04em;
+  display: inline-block;
+}
+.pill-role.admin {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+
+/* ===================== APP SHELL ===================== */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--side-w) 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: var(--moss-deep);
+  color: #cfdcd1;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  border-inline-end: 1px solid #0d2f1f;
+}
+.sidebar .brand-row {
+  padding: 22px 22px 16px;
+  border-bottom: 1px solid #1a4830;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sidebar .brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  /* Scoped override, not a change to the shared --amber token — see the matching comment on
+     `.user-chip .avatar` below. Same #b6622a-on-white failure (4.4:1), same fix (#ae5e28, 4.74:1). */
+  background: #ae5e28;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #fff;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.sidebar .brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.sidebar .brand-text .b1 {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #9fc0aa;
+  font-weight: 600;
+}
+.sidebar .brand-text .b2 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+.side-nav {
+  padding: 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+.side-nav .group-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  /* Darkened from #7fa590 (4.33:1 on --moss-deep) to meet WCAG 1.4.3's 4.5:1 minimum for small
+     text — computed at 4.69:1 against the sidebar's --moss-deep background. See
+     apps/web-e2e/src/accessibility/critical-routes.spec.ts. */
+  color: #87ab97;
+  font-weight: 600;
+  padding: 14px 10px 6px;
+}
+.side-link {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: #cfdcd1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: start;
+  width: 100%;
+  font-family: inherit;
+  transition: 0.14s ease;
+}
+.side-link svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.side-link:hover {
+  background: #1a4830;
+  color: #fff;
+  text-decoration: none;
+}
+/* Keyboard focus ring: the global moss ring is invisible on the dark-green sidebar, so use
+   the amber accent (offset inward so it never clips at the rail edge). */
+.side-link:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: -2px;
+}
+.side-link.active {
+  background: #fff;
+  color: var(--moss-deep);
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+.side-link.active:hover {
+  background: #fff;
+  color: var(--moss-deep);
+}
+.side-link.active svg {
+  opacity: 1;
+  color: var(--moss-deep);
+}
+.side-foot {
+  padding: 14px;
+  border-top: 1px solid #1a4830;
+}
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px;
+  border-radius: 8px;
+  text-align: start;
+}
+.user-chip .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  /* Scoped override, not a change to the shared --amber token (used elsewhere as a text/border
+     accent where the lighter value still passes its own contrast needs): #b6622a against white
+     text was 4.4:1, short of WCAG 1.4.3's 4.5:1. #ae5e28 is a small, deliberate darkening that
+     computes to 4.74:1 while staying within the amber family. */
+  background: #ae5e28;
+  flex-shrink: 0;
+}
+.user-chip .u-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+.user-chip .u-name {
+  /* Matches the width actually available in .u-info at --side-w: 264px (avatar 36 + logout 32 +
+     two 8px gaps + chip/side-foot padding leave ~140px). Longer names get the ellipsis safety
+     net below — widen `--side-w` rather than letting real names truncate. */
+  max-width: 140px;
+  font-size: 13px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-chip .u-role {
+  font-size: 11px;
+  color: #9fc0aa;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-chip .logout {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #9fc0aa;
+  background: transparent;
+  border: 1px solid #2c5d42;
+  border-radius: 7px;
+  cursor: pointer;
+  padding: 0;
+}
+.user-chip .logout svg {
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.user-chip .logout:hover {
+  color: #fff;
+  border-color: var(--amber);
+  background: rgba(182, 98, 42, 0.12);
+}
+.side-error {
+  margin: 8px 20px 0;
+  font-size: 12px;
+  color: #f0b4b4;
+}
+
+/* Top bar + main content host */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.topbar {
+  background: #fff;
+  border-bottom: 1px solid var(--line);
+  padding: 18px 32px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.topbar h1 {
+  font-size: 20px;
+  letter-spacing: -0.015em;
+}
+.topbar .crumb {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  /* Scoped override, not a change to the shared --muted-soft token (used widely elsewhere for
+     secondary text/icons that don't all share this exact background): #8d8f88 on white was
+     3.27:1, short of WCAG 1.4.3's 4.5:1. #72746d is a small, deliberate darkening that computes
+     to 4.73:1 against the topbar's white background. */
+  color: #72746d;
+  font-weight: 600;
+}
+.topbar .spacer {
+  flex: 1;
+}
+.topbar .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.icon-btn {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+.icon-btn:hover {
+  border-color: var(--moss);
+  color: var(--moss);
+}
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Icon + label pairing inside a regular (non-icon-only) button, e.g. the Dashboard search button. */
+.btn-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-icon-text svg {
+  width: 14px;
+  height: 14px;
+}
+.content {
+  padding: 28px 32px 60px;
+  width: 100%;
+}
+
+/* Off-canvas navigation toggle (shown only on narrow viewports). */
+.nav-toggle {
+  display: none;
+}
+.nav-backdrop {
+  display: none;
+}
+
+@media (max-width: 980px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: var(--side-w);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 120;
+  }
+  [dir='rtl'] .sidebar {
+    transform: translateX(100%);
+  }
+  .sidebar.is-open {
+    transform: none;
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+  .nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 110;
+  }
+  .nav-toggle {
+    display: grid;
+  }
+  .content {
+    padding: 22px 18px 50px;
+  }
+  .topbar {
+    padding: 16px 18px;
+  }
+}
+
+/* ===================== STAT TILES ===================== */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin: 22px 0;
+}
+.stat-grid.three {
+  grid-template-columns: repeat(3, 1fr);
+}
+.stat-tile {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: 0.14s ease;
+  text-align: start;
+  width: 100%;
+  font-family: inherit;
+  color: inherit;
+}
+.stat-tile:hover {
+  border-color: var(--moss);
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-1px);
+}
+.stat-tile .icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+}
+.stat-tile.amber .icon {
+  background: var(--amber-tint);
+  color: var(--amber);
+}
+.stat-tile.info .icon {
+  background: var(--info-tint);
+  color: var(--info);
+}
+.stat-tile.danger .icon {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.stat-tile .icon svg {
+  width: 20px;
+  height: 20px;
+}
+.stat-tile .meta {
+  flex: 1;
+  min-width: 0;
+}
+.stat-tile .meta .v {
+  display: block;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+.stat-tile .meta .k {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+  margin-top: 3px;
+}
+.stat-tile .arrow {
+  color: var(--muted-soft);
+  flex-shrink: 0;
+}
+
+/* ===================== GREETING ===================== */
+.greet {
+  margin-bottom: 6px;
+}
+.greet h2 {
+  font-size: 22px;
+}
+.greet .sub {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+/* ===================== LOGIN ===================== */
+/*
+ * Full-bleed split sign-in. Replaces the earlier floating 920px card, which had four
+ * structural problems on a wide screen: the card looked small and lost in a large empty
+ * green field; its two halves carried unequal visual weight; the hero column centred its
+ * content while the body column top-aligned its own, so nothing lined up across the seam;
+ * and the body column ran out of content ~200px above the card's floor (the min-height was
+ * driven by the hero), leaving a dead void under the sign-in button.
+ *
+ * The fix is compositional, not decorative: the two columns ARE the page (each owns half the
+ * viewport, so there is no leftover green field), and each one centres its own fixed-width
+ * content block on the same axis, so the eyebrow/heading stack and the sign-in stack read as
+ * one horizontal band. Any leftover height becomes symmetric padding above and below instead
+ * of a one-sided gap. Decoration is deliberately crisp — hairlines, pills, a 1px seam — after
+ * the previous version's soft radial "glow" in the hero corner read as a stray blur artifact.
+ *
+ * The `--lp-*` custom properties below are scoped to the sign-in surfaces (not promoted to
+ * `tokens.css`) because they exist only to keep dark-on-green text accessible; nothing else in
+ * the app paints text on a moss gradient.
+ */
+/* Hero gradient stops and the text tints that sit on them. Contrast is measured against the
+   LIGHTEST stop (--lp-hero-end), the worst case: #fff 8.0:1, --lp-ink 5.97:1,
+   --lp-ink-dim 5.48:1, --lp-ink-chip 7.0:1 — all clear WCAG AA (4.5:1) for normal text.
+   Scoped to the two sign-in surfaces (not promoted to `tokens.css`) because they exist only to
+   keep dark-on-green text accessible; nothing else in the app paints text on a moss gradient.
+   `.auth-cb` is the callback screen — the same brand ground, taken full-bleed — so it shares
+   this one declaration rather than re-deriving a second set of green stops. */
+.login-wrap,
+.auth-cb {
+  --lp-hero-start: #0f3323;
+  --lp-hero-mid: #17492f;
+  --lp-hero-end: #1d5b3c;
+  --lp-ink: #cfe3d5;
+  --lp-ink-dim: #c3dbcd;
+  --lp-ink-chip: #e8f2ec;
+  --lp-hairline: rgba(255, 255, 255, 0.16);
+}
+.login-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  background: var(--paper);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.login-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 56px;
+  background: linear-gradient(
+    155deg,
+    var(--lp-hero-start),
+    var(--lp-hero-mid) 55%,
+    var(--lp-hero-end)
+  );
+  color: #fff;
+  overflow: hidden;
+}
+/* Woven hairline texture — crisp 1px rules, not a blur, so it never reads as an artifact. */
+.login-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.035) 0 1px,
+    rgba(255, 255, 255, 0) 1px 16px
+  );
+  pointer-events: none;
+}
+/* Lit seam between the halves: a 1px vertical rule that fades out at both ends, so the join
+   is a deliberate edge rather than a raw colour change. */
+.login-hero::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.24),
+    rgba(255, 255, 255, 0)
+  );
+}
+.login-hero-inner {
+  position: relative;
+  width: min(100%, 460px);
+}
+.login-hero .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--lp-ink-dim);
+}
+.login-hero .eyebrow::before {
+  content: '';
+  flex: none;
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--moss-bright);
+}
+.login-hero h1 {
+  margin: 20px 0 0;
+  font-size: clamp(28px, 2.6vw, 38px);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.login-hero .lede {
+  margin: 16px 0 0;
+  max-width: 42ch;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--lp-ink);
+}
+.hero-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 28px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.hero-chips li {
+  padding: 7px 13px;
+  border: 1px solid var(--lp-hairline);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lp-ink-chip);
+}
+.login-hero .stamp {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 34px 0 0;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--lp-ink-dim);
+}
+.login-hero .stamp .pi {
+  flex: none;
+  font-size: 14px;
+  color: var(--moss-bright);
+}
+
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 48px;
+  background: var(--paper);
+}
+/* The sign-in stack is a real surface, not text floating on the background: same white-card-on-
+   paper treatment as `.panel` elsewhere in the app, which also stops the short b2c variant (one
+   button) from reading as a large empty white field. */
+.login-panel-inner {
+  width: min(100%, 452px);
+  padding: 40px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.login-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 22px;
+  border: 1px solid #d5e3d8;
+  border-radius: 14px;
+  background: var(--moss-tint);
+  color: var(--moss);
+  font-size: 18px;
+}
+.login-panel h2 {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+.login-panel .sub {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+/* The session-expired notice is a PrimeNG `p-message`; its host element is inline by default,
+   so block it out here rather than wrapping it in a spacer div. */
+.login-panel-inner p-message {
+  display: block;
+  margin-top: 20px;
+}
+.login-panel-inner .login-alert {
+  width: 100%;
+  border-radius: 10px;
+}
+/* PrimeNG's stock `warn` foreground (#ca8a04) is only 2.84:1 on its own tint — below WCAG AA —
+   and its 16px text overpowers the card's 13-14px scale. Scoped to this card (not a global
+   `p-message` override) so nothing else in the app shifts: #9c4f1c is the design system's own
+   darker amber (`.btn-amber:hover`) and measures 5.72:1 on the same tint. */
+.login-panel-inner .login-alert,
+.login-panel-inner .login-alert .p-message-text,
+.login-panel-inner .login-alert .p-message-icon {
+  color: #9c4f1c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.login-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid rgba(157, 43, 43, 0.28);
+  border-radius: 10px;
+  background: var(--danger-tint);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.login-error .pi {
+  flex: none;
+  margin-top: 1px;
+  font-size: 14px;
+}
+/* Sign-in is the page's only action, so the CTA is deliberately taller than the shared
+   `--control-h` control box that `.btn` pins for form rows. */
+.login-cta {
+  height: 50px;
+  margin-top: 26px;
+  gap: 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  box-shadow: 0 6px 18px rgba(20, 60, 41, 0.22);
+}
+.login-cta .pi {
+  font-size: 15px;
+}
+.login-cta:disabled {
+  box-shadow: none;
+}
+.role-list {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Capped against the viewport (not a fixed pixel height) so the eight demo profiles never
+     push the centred column past the fold on a laptop screen; the scroll-shadow affordance
+     below only appears once the cap actually bites. */
+  max-height: min(52vh, 560px);
+  overflow-y: auto;
+  padding-inline-end: 6px;
+  background:
+    linear-gradient(var(--panel) 30%, rgba(255, 255, 255, 0)) local,
+    linear-gradient(rgba(255, 255, 255, 0), var(--panel) 70%) local,
+    radial-gradient(farthest-side at 50% 0, rgba(20, 32, 28, 0.18), rgba(20, 32, 28, 0)) scroll,
+    radial-gradient(farthest-side at 50% 100%, rgba(20, 32, 28, 0.18), rgba(20, 32, 28, 0)) scroll;
+  background-repeat: no-repeat;
+  background-size: 100% 24px, 100% 24px, 100% 10px, 100% 10px;
+  background-position: top, bottom, top, bottom;
+  background-attachment: local, local, scroll, scroll;
+}
+.role-card {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  text-align: start;
+  width: 100%;
+  font-family: inherit;
+}
+.role-card:hover:not(:disabled) {
+  border-color: var(--moss);
+  box-shadow: var(--shadow);
+}
+.role-card:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.role-card .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+  font-size: 12px;
+}
+/* One avatar colour per role (`.ra-<role>`, from `ROLES` in libs/auth). Add a rule when you add
+   a role — a role with no rule renders an unstyled, colourless chip.
+   These are NOT the raw `--moss-bright`/`--amber` tokens: white 12px initials on those land at
+   4.29:1 and 4.4:1, short of WCAG 1.4.3's 4.5:1. Each is darkened one step (`#ae5e28` is 4.74:1,
+   `#237a4e` is 5.30:1) — scoped here rather than changed in the token file, where the lighter
+   values still pass their own contrast needs as text/border accents. */
+.role-card .ra-admin {
+  background: #ae5e28;
+}
+.role-card .ra-editor {
+  background: #2c5b8a;
+}
+.role-card .ra-viewer {
+  background: #237a4e;
+}
+.role-card .who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.role-card .who .nm {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.role-card .who .rl {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.role-card .arrow {
+  color: var(--muted-soft);
+  font-size: 18px;
+  line-height: 1;
+}
+/* `.role-card` is passed to `p-button` as `styleClass`, so it lands on the same element as
+   PrimeNG's own `.p-button` class. Equal specificity means source order decides, and PrimeNG's
+   theme is injected into <head> at runtime — after this sheet — so it would win. Re-asserting
+   these few properties one level more specific is what keeps the profile cards reading as cards
+   rather than as a stack of primary buttons. */
+.role-list .role-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  justify-content: flex-start;
+  padding: 11px 14px;
+  box-shadow: none;
+}
+.role-list .role-card:hover:not(:disabled) {
+  background: #fff;
+  border-color: var(--moss);
+  box-shadow: var(--shadow);
+}
+/* Governance note. Solid hairline — the previous dashed rule read as an unfinished divider. */
+.login-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.login-foot .pi {
+  flex: none;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--moss);
+}
+
+/* Motion is opt-in: everything above is legible and correctly positioned with no animation at
+   all, so a reduced-motion visitor loses nothing. */
+@media (prefers-reduced-motion: no-preference) {
+  .login-hero-inner,
+  .login-panel-inner {
+    animation: login-rise 0.45s ease both;
+  }
+  .login-panel-inner {
+    animation-delay: 0.07s;
+  }
+  .login-cta,
+  .role-card {
+    transition:
+      background 0.16s ease,
+      border-color 0.16s ease,
+      box-shadow 0.16s ease,
+      transform 0.16s ease;
+  }
+  .login-cta:hover:not(:disabled),
+  .role-card:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+  .login-cta:hover:not(:disabled) {
+    box-shadow: 0 10px 24px rgba(20, 60, 41, 0.28);
+  }
+}
+@keyframes login-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .login-hero,
+  .login-panel {
+    padding: 52px 40px;
+  }
+}
+/* Short laptop viewports: the dev role picker is the tallest variant (eight profile cards), and
+   at 900px of height the generous block padding tipped it ~30px past the fold. Tighten the
+   padding rather than shrink the cards. */
+@media (min-width: 901px) and (max-height: 940px) {
+  .login-hero,
+  .login-panel {
+    padding-block: 40px;
+  }
+  .login-panel-inner {
+    padding-block: 32px;
+  }
+  .role-list {
+    max-height: min(46vh, 520px);
+  }
+}
+/* Stacked layout: the hero becomes a compact masthead band and the sign-in column sits under
+   it, both content blocks sharing one centred measure so they still line up vertically. */
+@media (max-width: 900px) {
+  .login-wrap {
+    grid-template-columns: 1fr;
+    /* `max-content`, not `auto`: the hero clips its texture with `overflow: hidden`, which makes
+       its automatic minimum size 0, so on a viewport too short for the whole stacked page (the
+       dev role picker on a phone) an `auto` row collapsed the hero to its padding and clipped
+       the wordmark away. `max-content` pins the row to the hero's real height and lets the page
+       scroll instead. */
+    grid-template-rows: max-content 1fr;
+  }
+  .login-hero {
+    align-items: flex-start;
+    padding: 44px 28px 38px;
+  }
+  .login-hero::after {
+    inset: auto 0 0;
+    width: auto;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0),
+      rgba(255, 255, 255, 0.24),
+      rgba(255, 255, 255, 0)
+    );
+  }
+  .login-panel {
+    align-items: flex-start;
+    padding: 32px 28px 48px;
+  }
+  .login-hero-inner,
+  .login-panel-inner {
+    width: 100%;
+    max-width: 520px;
+    margin-inline: auto;
+  }
+  .login-panel-inner {
+    padding: 32px 28px;
+  }
+  .login-hero h1 {
+    font-size: 26px;
+  }
+  .hero-chips {
+    margin-top: 22px;
+  }
+  .login-hero .stamp {
+    margin-top: 26px;
+  }
+}
+@media (max-width: 480px) {
+  .login-hero {
+    padding: 34px 20px 30px;
+  }
+  .login-panel {
+    padding: 26px 16px 40px;
+  }
+  .login-panel-inner {
+    padding: 26px 22px;
+  }
+  .login-hero h1 {
+    font-size: 24px;
+  }
+  .login-hero .lede {
+    font-size: 14px;
+  }
+  .login-mark {
+    width: 42px;
+    height: 42px;
+    margin-bottom: 18px;
+  }
+  .login-panel h2 {
+    font-size: 23px;
+  }
+  .role-list {
+    max-height: none;
+  }
+}
+
+/* ===================== AUTH CALLBACK ===================== */
+/*
+ * The screen the IdP redirect lands on while the token exchange finishes. It used to render the
+ * app's generic `.content > .panel > .empty-state` stack, which produced a stray white band
+ * pinned to the top of the viewport with a large dead area under it — and because the exchange
+ * takes a few seconds, that band was on screen long enough to read as a broken page.
+ *
+ * The composition is deliberately the *second half* of the login screen rather than a new idea:
+ * `.login-wrap` splits the viewport into a moss brand panel and a white card panel, so here the
+ * brand panel simply takes the whole viewport and the card centres inside it. Same gradient
+ * stops (shared `--lp-*` rule above), same woven hairline texture, same `.login-mark` lock badge,
+ * same card radius/border, same `.login-error` failure block. Nothing new is invented except the
+ * one thing the login screen has no equivalent of: the wait itself.
+ *
+ * The rail is honestly indeterminate. The exchange really does have three phases, and they are
+ * named under the rail so the wait is legible rather than a mute spinner — but the component
+ * gets no progress callbacks from the provider (and this is a presentation-only surface: it must
+ * not add timers or lifecycle of its own to fake them), so no segment is ever painted as
+ * "done". A looping beam sweeps the whole rail; the labels stay in one neutral state throughout.
+ *
+ * Motion is opt-in, matching the login block above: with `prefers-reduced-motion: reduce` the
+ * rail is three static moss-tint bars and the card does not animate in — the state is carried by
+ * the `role="status"` copy, which is what assistive tech reads either way.
+ */
+.auth-cb {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  padding: 32px 24px;
+  background: linear-gradient(
+    155deg,
+    var(--lp-hero-start),
+    var(--lp-hero-mid) 55%,
+    var(--lp-hero-end)
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+/* Same crisp 1px weave as `.login-hero::before` — never a blur, so it cannot read as an
+   artifact — plus a vignette that pulls the eye to the centred card. */
+.auth-cb::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(
+      120% 85% at 50% 42%,
+      rgba(255, 255, 255, 0.07),
+      rgba(255, 255, 255, 0) 45%,
+      rgba(9, 26, 18, 0.28) 100%
+    ),
+    repeating-linear-gradient(
+      115deg,
+      rgba(255, 255, 255, 0.035) 0 1px,
+      rgba(255, 255, 255, 0) 1px 16px
+    );
+  pointer-events: none;
+}
+/* `margin: auto` inside a plain flex container — not `place-items: center` on the parent — is
+   what centres the stack: on a viewport shorter than the card, centring via the container's own
+   alignment would push the card's top edge above the scroll origin and make it unreachable,
+   whereas auto margins collapse and the overflow stays scrollable. */
+.auth-cb-stack {
+  position: relative;
+  margin: auto;
+  width: min(100%, 496px);
+}
+/* The wordmark under the card echoes `.login-hero h1`, and gives the composition a second
+   element so the card does not read as one small object adrift in a large green field. */
+.auth-cb-brand {
+  margin: 20px 0 0;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lp-ink-dim);
+}
+.auth-cb-card {
+  padding: 40px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  /* Heavier than `.login-panel-inner`'s `--shadow`: this card floats on the dark ground rather
+     than sitting on `--paper`, so it needs the deeper lift to separate cleanly. */
+  box-shadow: var(--shadow-lift);
+}
+.auth-cb-mark {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 1px solid #d5e3d8;
+  border-radius: 14px;
+  background: var(--moss-tint);
+  color: var(--moss);
+  font-size: 18px;
+}
+/* Halo ring — static by default, gently breathing under `no-preference` (see below). */
+.auth-cb-mark::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border: 1px solid rgba(31, 92, 61, 0.18);
+  border-radius: 18px;
+}
+.auth-cb-mark-fail {
+  border-color: rgba(157, 43, 43, 0.28);
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+.auth-cb-mark-fail::after {
+  border-color: rgba(157, 43, 43, 0.18);
+}
+.auth-cb-eyebrow {
+  margin: 22px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  /* Not `--moss` (which is the card's loudest colour and would fight the heading) but not
+     `--muted-soft` either — that measures 3.27:1 on `--panel`, under AA. 4.95:1. */
+  color: #4a7a5f;
+}
+.auth-cb-card h3 {
+  margin: 10px 0 0;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+.auth-cb-sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.auth-cb-rail {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin-top: 28px;
+}
+.auth-cb-rail > span {
+  position: relative;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--moss-tint);
+  overflow: hidden;
+}
+.auth-cb-phases {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.auth-cb-phases li {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.4;
+  /* `--muted`, not `--muted-soft`: at 10px these are normal-size text for WCAG purposes, and
+     `--muted-soft` is 3.27:1 on `--panel` — under AA. `--muted` measures 5.11:1. */
+  color: var(--muted);
+}
+.auth-cb-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 28px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.auth-cb-foot .pi {
+  flex: none;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--moss);
+}
+/* `.btn` leaves link decoration alone (every other consumer is a real `<button>`), so the
+   recovery link — an `<a routerLink>` for real navigation semantics — clears it here. */
+.auth-cb-action {
+  margin-top: 22px;
+  height: 46px;
+  border-radius: 10px;
+  font-size: 14px;
+  text-decoration: none;
+  box-shadow: 0 6px 18px rgba(20, 60, 41, 0.22);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .auth-cb-card {
+    animation: login-rise 0.45s ease both;
+  }
+  .auth-cb-mark::after {
+    animation: auth-cb-halo 2.8s ease-in-out infinite;
+  }
+  /* One beam per segment, offset by a third of the cycle each, so a single highlight appears to
+     travel the length of the rail and wrap. */
+  .auth-cb-rail > span::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--moss-bright), var(--moss));
+    animation: auth-cb-beam 1.95s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+  .auth-cb-rail > span:nth-child(2)::after {
+    animation-delay: 0.22s;
+  }
+  .auth-cb-rail > span:nth-child(3)::after {
+    animation-delay: 0.44s;
+  }
+}
+@keyframes auth-cb-halo {
+  0%,
+  100% {
+    inset: -6px;
+    opacity: 1;
+  }
+  50% {
+    inset: -10px;
+    opacity: 0.35;
+  }
+}
+@keyframes auth-cb-beam {
+  0% {
+    transform: translateX(-100%);
+  }
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (max-width: 480px) {
+  .auth-cb {
+    padding: 24px 16px;
+  }
+  .auth-cb-card {
+    padding: 28px 22px;
+  }
+  .auth-cb-card h3 {
+    font-size: 21px;
+  }
+  .auth-cb-mark {
+    width: 42px;
+    height: 42px;
+  }
+  .auth-cb-eyebrow {
+    margin-top: 18px;
+    letter-spacing: 0.18em;
+  }
+  /* A third of a phone-width card is too narrow for the labels to sit over their own segment
+     without ragged two-line wrapping, so below 480px they collapse into one middot-separated
+     run that wraps evenly instead. */
+  .auth-cb-phases {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 0;
+  }
+  .auth-cb-phases li {
+    letter-spacing: 0.04em;
+  }
+  .auth-cb-phases li:not(:last-child)::after {
+    content: '·';
+    margin-inline: 7px;
+    color: var(--line-strong);
+  }
+  .auth-cb-brand {
+    margin-top: 16px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+  }
+}
+/* RTL: `translateX` is physical, so the beam would sweep the wrong way under `dir="rtl"`. */
+[dir='rtl'] .auth-cb-rail > span::after {
+  animation-name: auth-cb-beam-rtl;
+}
+@keyframes auth-cb-beam-rtl {
+  0% {
+    transform: translateX(100%);
+  }
+  55%,
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+/* ===================== EMPTY / STUB STATE ===================== */
+.empty-state {
+  text-align: center;
+  padding: 48px 24px;
+  color: var(--muted);
+}
+.empty-state h3 {
+  color: var(--ink);
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.empty-state .phase-tag {
+  display: inline-block;
+  margin-top: 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: var(--amber-tint);
+  padding: 5px 12px;
+  border-radius: 20px;
+}
+
+/* ----- Page heading (list) ----- */
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.page-head h2 {
+  font-size: 22px;
+}
+.page-head .sub {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 4px;
+  max-width: 640px;
+}
+.page-head .spacer {
+  flex: 1;
+}
+
+/* ----- Form fields ----- */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+/* `--muted-soft` (#8d8f88) is only 3.27:1 against the panel's white — fine for the large,
+   decorative uses it was picked for, below WCAG 1.4.3's 4.5:1 for 11px help text. `--muted`
+   (#6c6f68) is 5.11:1 on white and still reads as secondary. Scoped here rather than changed in
+   the token file, where the lighter value passes its own contrast needs. */
+.field .hint {
+  font-size: 11px;
+  color: var(--muted);
+}
+.field .req {
+  color: var(--danger);
+  font-weight: 700;
+  margin-inline-start: 2px;
+}
+.field .err {
+  font-size: 11px;
+  color: var(--danger);
+  font-weight: 500;
+}
+input[type='text'],
+input[type='number'],
+input[type='email'],
+input[type='password'],
+input[type='search'],
+select,
+textarea,
+/* `[pInputText]` renders as a plain `<input>` with NO `type` attribute for most of this app's
+   numeric fields (`inputmode="numeric"`/`"decimal"` instead — see the line-editor's Quantity/Rate/
+   Metric inputs), so it never matched the `input[type='text']` selector above and fell back to
+   PrimeNG's own Aura theme height (36px, not this app's 40px `--control-h`). `.p-inputtext` is the
+   class PrimeNG's `pInputText` directive always applies, `type` attribute or not. */
+.p-inputtext {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  padding: 10px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #fff;
+  width: 100%;
+  /* Same box as `.btn` above (see `--control-h`) — a single-line input/select and a button in the
+     same row line up exactly. Cancelled for `textarea` below, which grows instead. */
+  height: var(--control-h);
+}
+/* Safari/Chrome add a native "clear" affordance + differing box metrics to `search` inputs by
+   default — normalize to the same appearance as every other text-like field above. */
+input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+textarea {
+  resize: vertical;
+  height: auto;
+  min-height: 80px;
+  line-height: 1.5;
+}
+select:focus,
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--moss);
+  outline-offset: -1px;
+  border-color: var(--moss);
+}
+select:disabled,
+input:disabled {
+  background: #f0eee8;
+  color: var(--muted-soft);
+  cursor: not-allowed;
+}
+/* Dropdown-style PrimeNG controls (`p-select`, the Chart-of-Accounts `p-autoComplete`) render
+   their own root element rather than a plain `<input>`/`<select>`, so none of the rules above
+   reach them — left unstyled, they fall back to PrimeNG's own Aura theme height (42px for
+   `p-select`), taller than every text input beside them (`--control-h`, 40px). Every
+   dropdown-style control in the app needs to match `.p-inputtext`'s box exactly. */
+.p-select,
+.p-autocomplete .p-autocomplete-input {
+  height: var(--control-h);
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.form-grid.two {
+  grid-template-columns: repeat(2, 1fr);
+}
+/* Lets one field take the full row width inside a `.form-grid`/`.form-grid.two`
+   (e.g. a checkbox with a long label that would otherwise be crushed into one column). */
+.form-grid .span-2 {
+  grid-column: 1 / -1;
+}
+.form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+@media (max-width: 760px) {
+  .form-grid,
+  .form-grid.two {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ----- Filter bar ----- */
+.filter-bar {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  padding: 16px 20px;
+  background: #fbfaf6;
+  border-bottom: 1px solid var(--line);
+}
+.filter-bar .field {
+  min-width: 170px;
+}
+
+/* ----- Pager (Prev / info / Next bar) ----- */
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+}
+.pager-info {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ----- List table ----- */
+/* Horizontal-scroll affordance, applied to every `.scroll` wrapper app-wide (list tables,
+   data tables, wide report tables, …): a persistently visible thin scrollbar rather
+   than the OS's auto-hiding overlay one, so a table that's wider than its panel doesn't
+   read as "cut off" — it visibly invites scrolling. Tables that already fit their
+   container render no scrollbar at all (browsers only draw one when content overflows),
+   so this is a no-op for panels that never needed to scroll. */
+.scroll {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+  /* Belt-and-suspenders scroll cue: the thin scrollbar below covers browsers that render
+     it, and this edge shadow (the standard JS-free "scroll shadow" recipe) covers
+     overlay-scrollbar setups where a styled scrollbar may not be visible without
+     interaction. The `local`-attached fade layers travel with the table's scroll
+     position and cancel the `scroll`-attached shadow out once there's nothing left in
+     that direction, so a table that already fits shows no shadow at all. */
+  background:
+    linear-gradient(to right, var(--panel) 30%, rgba(255, 255, 255, 0)) local,
+    linear-gradient(to left, var(--panel) 30%, rgba(255, 255, 255, 0)) 100% 0 local,
+    radial-gradient(farthest-side at 0 50%, rgba(20, 32, 28, 0.22), rgba(20, 32, 28, 0)) scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(20, 32, 28, 0.22), rgba(20, 32, 28, 0)) 100% 0 scroll;
+  background-repeat: no-repeat;
+  background-color: var(--panel);
+  background-size: 28px 100%, 28px 100%, 12px 100%, 12px 100%;
+  background-attachment: local, local, scroll, scroll;
+}
+.scroll::-webkit-scrollbar {
+  height: 9px;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 5px;
+}
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-soft);
+}
+table.list {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 720px;
+}
+table.list thead th {
+  background: #fbfaf6;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 12px 18px;
+  text-align: start;
+  border-bottom: 1px solid var(--line);
+}
+table.list thead th.num {
+  text-align: end;
+}
+table.list tbody td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #efeee8;
+  vertical-align: middle;
+  font-size: 13px;
+}
+table.list tbody td.num,
+table.list tfoot td.num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+table.list tbody tr {
+  transition: background 0.12s;
+}
+table.list tbody tr.clickable {
+  cursor: pointer;
+}
+table.list tbody tr.clickable:hover {
+  background: #fbfaf6;
+}
+table.list tbody tr:last-child td {
+  border-bottom: 0;
+}
+/* A trailing actions column (e.g. a row's Download/Copy/Edit button) right-aligns within its
+   cell instead of sitting flush against the previous column with a large empty gap trailing it. */
+table.list th.col-actions,
+table.list td.col-actions {
+  text-align: right;
+}
+
+
+/* ----- Data table (Reports: BA-format + Network-format) ----- */
+table.data-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 640px;
+}
+table.data-table thead th {
+  background: #fbfaf6;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 12px 18px;
+  text-align: start;
+  border-bottom: 1px solid var(--line);
+}
+table.data-table thead th.num {
+  text-align: end;
+}
+table.data-table tbody td {
+  padding: 14px 18px;
+  border-bottom: 1px solid #efeee8;
+  vertical-align: middle;
+  font-size: 13px;
+  text-align: start;
+}
+table.data-table tbody td.num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+table.data-table tbody tr {
+  transition: background 0.12s;
+}
+table.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.notes-block {
+  margin: 12px 20px 18px;
+  padding: 12px 14px;
+  background: #fbfaf6;
+  border: 1px solid var(--line);
+  border-inline-start: 3px solid var(--moss);
+  border-radius: 8px;
+}
+/* When nested inside a `.panel-body` (which already supplies 20px of horizontal padding),
+   cancel the block's own side margins so it doesn't sit double-indented. Direct-in-`.panel`
+   usages keep the side margins above, since nothing else provides them there. */
+.panel-body .notes-block {
+  margin-inline: 0;
+}
+.notes-block .n-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted-soft);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.notes-block .n-text {
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.55;
+}
+/* ----- Empty / error blocks ----- */
+.empty {
+  padding: 50px 20px;
+  text-align: center;
+  color: var(--muted);
+}
+.empty strong {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+.load-block {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.load-block::before {
+  content: '';
+  width: 22px;
+  height: 22px;
+  border: 2.5px solid var(--line);
+  border-top-color: var(--moss);
+  border-radius: 50%;
+  animation: load-spin 0.75s linear infinite;
+}
+@keyframes load-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .load-block::before {
+    animation: none;
+  }
+}
+.error-block {
+  padding: 24px 20px;
+  color: var(--danger);
+  font-size: 13px;
+}
+.error-block strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+/* ----- Skeleton loaders ----- */
+.skeleton {
+  background: linear-gradient(90deg, #efeee8 25%, #f6f5f0 50%, #efeee8 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.3s ease-in-out infinite;
+  border-radius: 6px;
+}
+.skeleton-row {
+  height: 46px;
+  margin: 0 18px;
+  border-bottom: 1px solid #efeee8;
+}
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* ===================== MODAL ===================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 32, 28, 0.42);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 6vh 20px;
+  z-index: 60;
+  overflow-y: auto;
+}
+.modal {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+  width: 100%;
+  max-width: 520px;
+  outline: none;
+}
+.modal.wide {
+  max-width: 760px;
+}
+.modal-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 {
+  font-size: 17px;
+}
+.modal-sub {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.modal-x {
+  margin-inline-start: auto;
+  border: none;
+  background: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.modal-x:hover {
+  color: var(--ink);
+}
+.modal-body {
+  padding: 20px;
+}
+.modal-foot {
+  padding: 14px 20px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
