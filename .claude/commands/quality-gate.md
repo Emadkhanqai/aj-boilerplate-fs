@@ -7,6 +7,9 @@ description: Run SonarQube and enforce zero Blocker/Critical/Major before a push
 The focused SonarQube gate. Assumes build and tests are already green — if they are not, run
 [`/qa`](qa.md) first.
 
+Targets **SonarQube Community Build** (free, self-hosted). Community analyses one branch — the
+default branch — so no step below names a branch or a pull request.
+
 ## Steps
 
 1. Ensure the solution builds so the scanner has fresh analysis input.
@@ -23,12 +26,16 @@ The focused SonarQube gate. Assumes build and tests are already green — if the
 
    dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
    ```
+   Never add `sonar.branch.name` or `sonar.pullrequest.*` — those need Developer Edition or
+   above. For the TypeScript half, use the plain `sonar-scanner` CLI with its own project key;
+   see [`../standards/sonarqube.md`](../standards/sonarqube.md).
 3. Read the results over the SonarQube MCP:
    - `get_project_quality_gate_status`
    - `search_sonar_issues_in_projects` filtered to `BLOCKER,CRITICAL,MAJOR`
    - `search_security_hotspots` for the security review
-   - Resolve the project key first; for a PR use `list_pull_requests` + `pullRequest`, for a
-     branch use `list_branches` + `branch`. **Never pass both.**
+   - Resolve the project key first, then call each tool with **no `branch` and no
+     `pullRequest` argument**. Omitting both queries the default-branch analysis, which is the
+     only analysis Community Build has.
 
 ## Rules
 

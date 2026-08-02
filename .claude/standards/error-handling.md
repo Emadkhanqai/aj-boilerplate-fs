@@ -20,12 +20,12 @@ Errors are handled centrally, returned in the standard envelope, and never leak 
 | Condition | Status | `code` |
 |---|---|---|
 | Malformed body / model binding failure | 400 | `BAD_REQUEST` |
-| FluentValidation failure | 400 | `VALIDATION_FAILED` (messages in `errors[]`) |
+| FluentValidation failure | 400 | `VALIDATION_ERROR` (messages in `errors[]`) |
 | Missing / invalid / expired credentials | 401 | `UNAUTHENTICATED` |
 | Authenticated but not permitted (existence is not secret) | 403 | `FORBIDDEN` |
 | Resource missing, **or** hidden from this caller | 404 | `NOT_FOUND` |
 | Duplicate key / invalid state transition | 409 | `CONFLICT` |
-| Optimistic-concurrency mismatch (`DbUpdateConcurrencyException`) | 409 | `CONCURRENCY_CONFLICT` |
+| Optimistic-concurrency mismatch (`DbUpdateConcurrencyException`) | 409 | `CONFLICT` |
 | Resource permanently withdrawn (expired one-time link, retired resource) | 410 | `RESOURCE_GONE` |
 | Rate limit exceeded | 429 | `RATE_LIMITED` |
 | Unexpected fault | 500 | `INTERNAL_ERROR` (generic message only) |

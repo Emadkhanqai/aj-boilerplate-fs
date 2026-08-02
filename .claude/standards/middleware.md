@@ -91,7 +91,7 @@ applicable, and `Strict-Transport-Security` (non-Development). Strip the `Server
 
 ## 9. Validation filter
 
-- Return validation errors in `ApiResponse.errors` with `code = VALIDATION_FAILED`. See
+- Return validation errors in `ApiResponse.errors` with `code = VALIDATION_ERROR`. See
   [`input-validation-sanitization.md`](input-validation-sanitization.md).
 
 ## 10. Output encoding / sanitisation boundary
@@ -166,7 +166,7 @@ applicable, and `Strict-Transport-Security` (non-Development). Strip the `Server
 
 - Emit `ETag` on entities that support optimistic concurrency; require `If-Match` on updates.
 - **Pair with a database `rowversion`** (see [`efcore-migrations.md`](efcore-migrations.md));
-  return `409` with `code = CONCURRENCY_CONFLICT` on mismatch (see
+  return `409` with `code = CONFLICT` on mismatch (see
   [`api-response-format.md`](api-response-format.md)).
 
 ## 22. Scoped-token endpoints (external / anonymous surfaces)

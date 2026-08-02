@@ -109,7 +109,7 @@ public sealed record PagedResponse<T>(
   per controller.
 - **Validation errors go in `errors`** (a flat list of human-readable messages); `code` carries
   the stable machine-readable error code.
-- **`code` is stable and documented** (e.g. `VALIDATION_FAILED`, `NOT_FOUND`, `CONFLICT`,
+- **`code` is stable and documented** (e.g. `VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`,
   `FORBIDDEN`, `RESOURCE_GONE`, `INTERNAL_ERROR`). Once published, a code is never repurposed.
 - **Never expose stack traces, SQL errors, or internal exception messages.** In production an
   unexpected error returns a generic message + `code` + `traceId`; the detail goes to logs and
@@ -125,11 +125,11 @@ Applies to every endpoint. The `code` column is the value in the envelope's `cod
 | **201 Created** | Resource created. **Must** set the `Location` header to the new resource | — | `ApiResponse<T>` with the created resource |
 | **202 Accepted** | Work accepted for asynchronous processing; not yet done. Return a status/polling URL | — | `ApiResponse<T>` describing the accepted job |
 | **204 No Content** | Success with deliberately no body (e.g. `DELETE`) | — | *(empty — no envelope)* |
-| **400 Bad Request** | Malformed request or failed validation | `VALIDATION_FAILED` | `errors[]` holds per-field messages |
+| **400 Bad Request** | Malformed request or failed validation | `VALIDATION_ERROR` | `errors[]` holds per-field messages |
 | **401 Unauthorized** | Missing, expired, or invalid credentials. The caller is *unauthenticated* | `UNAUTHENTICATED` | Generic message only |
 | **403 Forbidden** | Authenticated but not permitted — **and the caller is allowed to know the resource exists** | `FORBIDDEN` | Generic message only |
 | **404 Not Found** | Resource does not exist — **or exists but the caller must not learn that it does** (see below) | `NOT_FOUND` | Generic message only |
-| **409 Conflict** | State conflict: duplicate unique key, invalid state transition, **or an optimistic-concurrency failure** | `CONFLICT`, `CONCURRENCY_CONFLICT` | Safe, business-meaningful message |
+| **409 Conflict** | State conflict: duplicate unique key, invalid state transition, **or an optimistic-concurrency failure** | `CONFLICT`, `CONFLICT` | Safe, business-meaningful message |
 | **410 Gone** | The resource *did* exist and is permanently, deliberately withdrawn | `RESOURCE_GONE` | Safe message |
 | **500 Internal Server Error** | Unhandled fault. Never leaks detail | `INTERNAL_ERROR` | Generic message + `traceId` |
 | **503 Service Unavailable** | Dependency down, or maintenance mode. Send `Retry-After` when known | `SERVICE_UNAVAILABLE` | Generic message |
@@ -148,7 +148,7 @@ OpenAPI description — inconsistency here is an information-disclosure bug.
 
 Concurrency tokens (`rowversion`) surface to the client as an `ETag`; updates carry
 `If-Match`. A mismatch — the row changed since the caller read it — returns **409** with
-`code = CONCURRENCY_CONFLICT` and a message telling the user to reload. Do **not** silently
+`code = CONFLICT` and a message telling the user to reload. Do **not** silently
 overwrite, and do not use 412 for this case unless the endpoint is documented as
 precondition-based; pick one and apply it consistently across the API.
 

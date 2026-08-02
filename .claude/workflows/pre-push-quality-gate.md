@@ -45,6 +45,10 @@ dotnet test --collect:"XPlat Code Coverage"
 dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 ```
 
+Never add `sonar.branch.name` or `sonar.pullrequest.*` to that scanner call. This boilerplate
+targets **SonarQube Community Build**, which analyses one branch — the default branch — and
+rejects both. Branch and pull-request analysis start at Developer Edition.
+
 ## Reading the SonarQube result
 
 Prefer the SonarQube MCP tools:
@@ -53,8 +57,13 @@ Prefer the SonarQube MCP tools:
 - `search_sonar_issues_in_projects` filtered to `BLOCKER,CRITICAL,MAJOR`
 - `search_security_hotspots`
 
-For a pull request use `list_pull_requests` + `pullRequest`; for a branch use `list_branches` +
-`branch`. **Never pass both.**
+Call each with **no `branch` and no `pullRequest` argument**. Omitting both queries the
+default-branch analysis, which on Community Build is the only one there is.
+
+**There is no pull-request decoration.** Sonar findings will never appear as PR comments —
+that is a paid-edition feature this repository does not use. This local gate is what catches
+them, before the code ever leaves the machine; CI re-analyses the default branch after merge.
+See [`../standards/sonarqube.md`](../standards/sonarqube.md).
 
 ## Gate rule
 

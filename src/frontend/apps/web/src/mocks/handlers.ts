@@ -107,7 +107,7 @@ export const handlers = [
     await delay(LATENCY_MS);
     const body = (await request.json()) as CreateItemRequest;
     if (body.name.trim() === '') {
-      return HttpResponse.json(failure('Name is required.', 'VALIDATION_FAILED'), { status: 400 });
+      return HttpResponse.json(failure('Name is required.', 'VALIDATION_ERROR'), { status: 400 });
     }
     const created: ItemResponse = {
       id: String(Math.max(0, ...items.map((i) => Number(i.id))) + 1),

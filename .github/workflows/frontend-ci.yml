@@ -2,7 +2,12 @@ name: Frontend CI
 
 # Gates, in order of how fast they fail:
 #   install → lint → typecheck → unit tests (coverage) → production build
-#           → dependency audit → Playwright E2E → secret scan → code scanning
+#           → dependency audit → Playwright E2E → quality gate → secret scan
+#           → code scanning
+#
+# Every gate runs on pull requests EXCEPT the SonarQube quality gate, which runs
+# only on pushes to main. That is a Community Build constraint, explained in full
+# above the `quality-gate` job.
 
 on:
   pull_request:
@@ -217,7 +222,73 @@ jobs:
           retention-days: 7
 
   # --------------------------------------------------------------------------
-  # Gate 6 — secret scanning. These repositories are public.
+  # Gate 6 — the SonarQube quality gate.
+  #
+  # PUSH-TO-MAIN ONLY, AND THAT IS DELIBERATE.
+  # This targets SonarQube Community Build (the free edition), which analyses
+  # exactly ONE branch: the project's default branch. Every analysis lands on the
+  # same project and overwrites the previous one, so scanning from a pull-request
+  # build would replace main's result with the state of an unmerged branch.
+  #
+  # Consequently there is NO PULL-REQUEST DECORATION — Sonar findings never appear
+  # as PR comments. Branch analysis and PR decoration start at Developer Edition
+  # and this boilerplate deliberately does not depend on them. Pull requests are
+  # gated by lint, typecheck, tests + coverage, the production build, npm audit,
+  # Playwright, Gitleaks, and CodeQL, plus the local sonar-pre-push hook.
+  # See .claude/standards/sonarqube.md.
+  #
+  # SEPARATE PROJECT KEY FROM THE BACKEND, also deliberate: two scanners pushing
+  # to one Community project would overwrite each other on every run, and the
+  # later one would win. Set the `SONAR_PROJECT_KEY_FRONTEND` repository variable.
+  #
+  # TypeScript needs only the generic SonarScanner CLI (this action). The C#
+  # analyser is the one that must wrap the build — see backend-ci.yml.
+  # --------------------------------------------------------------------------
+  quality-gate:
+    name: SonarQube quality gate
+    needs: [verify, build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SONAR_HOST_URL != '' && vars.SONAR_PROJECT_KEY_FRONTEND != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so SonarQube can attribute blame and compute "new code".
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - run: npm ci
+
+      # run-many, not affected: the analysis covers the whole project, so the
+      # coverage report has to as well.
+      - name: Unit tests with lcov coverage
+        run: npx nx run-many -t test --parallel=3 --coverage --coverageReporters=lcov
+
+      # No sonar.branch.name and no sonar.pullrequest.* — both need Developer
+      # Edition or above. On Community Build this IS the default-branch analysis.
+      - name: SonarScanner CLI
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
+        with:
+          projectBaseDir: src/frontend
+          args: >
+            -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_FRONTEND }}
+            -Dsonar.sources=apps,libs
+            -Dsonar.tests=apps,libs
+            -Dsonar.test.inclusions=**/*.spec.ts
+            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.generated.ts
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.qualitygate.wait=true
+
+  # --------------------------------------------------------------------------
+  # Gate 7 — secret scanning. These repositories are public.
   # --------------------------------------------------------------------------
   secret-scan:
     name: Gitleaks
@@ -240,7 +311,7 @@ jobs:
           GITLEAKS_CONFIG: ${{ github.workspace }}/.github/gitleaks.toml
 
   # --------------------------------------------------------------------------
-  # Gate 7 — CodeQL code scanning.
+  # Gate 8 — CodeQL code scanning.
   # --------------------------------------------------------------------------
   code-scanning:
     name: CodeQL

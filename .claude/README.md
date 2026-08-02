@@ -19,7 +19,7 @@ required.
 | `templates/` | Copy-paste starting points — ADR, pull request, migration checklist, domain entity, API controller, Angular component. |
 | `hooks/` | **Executable guardrails.** Deterministic shell scripts the harness runs automatically. |
 | `settings.json` | Wires the hooks, the permission policy, and the plugin dependencies. Team-shared. |
-| `model-routing.md` | Which model tier a task warrants, and when to say so. |
+| `model-routing.md` | Which model tier a task warrants, and when to say so. **Enforced** by the `model-routing` hook on every prompt. |
 | `../.mcp.json` | MCP servers: Playwright, Chrome DevTools, SonarQube, Context7, and the cloud pair. |
 
 ### Commands vs. workflows
@@ -111,6 +111,12 @@ Never commit any of these.
 | `GCP_PROJECT_ID` | when `CLOUD_PROVIDER=gcp` |
 | `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID` | when `CLOUD_PROVIDER=azure` |
 
+The SonarQube side targets **Community Build** — the free, self-hosted edition. One
+`docker run -d --name sonarqube -p 9000:9000 sonarqube:community` gives you a working server;
+[`standards/sonarqube.md`](standards/sonarqube.md) has the five-minute setup, the token steps,
+and the list of things Community deliberately does not have (branch analysis, pull-request
+decoration, portfolios, the OWASP/CWE report views). Nothing here needs a licence.
+
 ### 4. Optional but recommended — the secret pre-commit hook
 
 ```bash
@@ -124,11 +130,19 @@ set that covers the common cases.
 
 ## The hooks — what fires, and when
 
-All seven read the hook JSON payload from stdin, degrade gracefully when a tool is not
-installed, and are safe to run by hand.
+All eight consume the hook JSON payload on stdin, degrade gracefully when a tool is not
+installed, and are safe to run by hand. Seven of them parse it; `model-routing.sh` only drains
+it, because its output is the same on every prompt and parsing would buy a dependency for
+nothing.
+
+Note the events, which are not interchangeable: **PreToolUse** can veto an action before it
+happens, **PostToolUse** reacts to one that already did, **Stop** runs when the turn ends, and
+**UserPromptSubmit** is the one event whose stdout is injected into the model's context — which
+is precisely why the routing policy lives there and nowhere else.
 
 | Hook | Event | Blocking? | What it does |
 |---|---|:--:|---|
+| `model-routing.sh` | UserPromptSubmit (**every prompt**) | **never** | Injects the model-routing policy into context, because `UserPromptSubmit` stdout is one of the few hook outputs the model actually reads. Forces task classification *before* the first tool call and makes the tier recommendation something said out loud. Dependency-free, ~15 lines of output, always exits 0 — see [`model-routing.md`](model-routing.md). |
 | `auto-format.sh` | PostToolUse `Edit\|Write` | no | Formats **only** the edited file. `.cs` → `dotnet format` scoped to the nearest `.csproj`. `.ts/.html/.scss/.css/.json/.md` → Prettier, plus `eslint --fix` for TypeScript. |
 | `block-dangerous.sh` | PreToolUse `Bash` | **yes (exit 2)** | Refuses `rm -rf`, `git push --force`/`--force-with-lease`, `git reset --hard`, `git clean -fdx`, history rewriting, `DROP DATABASE`/`TRUNCATE`, production connection strings, and production cloud operations. Prints why. |
 | `protect-files.sh` | PreToolUse `Edit\|Write` | **yes (exit 2)** | Refuses edits to `.env*` (templates excepted), `appsettings.Production.json`, **existing** EF Core migrations and the model snapshot, `infra/*/prod/**`, `.claude/settings.json`, and key material. |
@@ -145,6 +159,8 @@ installed, and are safe to run by hand.
 | `AJ_SKIP_TESTS_HOOK=1` | Skips `run-affected-tests` | While deliberately working on a known-red suite. |
 | `AJ_SKIP_FORMAT_HOOK=1` | Skips `auto-format` | While debugging the formatter itself. |
 | `AJ_SKIP_HANDOFF_HOOK=1` | Skips `session-handoff` | Throwaway exploratory sessions. |
+| `AJ_SKIP_MODEL_ROUTING_HOOK=1` | Silences the per-prompt `model-routing` reminder | You have internalised the routing table and want the context back. **The policy still applies** — only the nudge stops. |
+| `SONAR_BRANCH` | Opt-in: adds `&branch=…` to the `sonar-pre-push` queries | **Only on SonarQube Developer Edition or above.** Unset by default, and it must stay unset on Community Build, which has no branches to query. |
 | `AJ_HOOK_TEST_TIMEOUT` | Seconds before the test hook gives up (default 180) | Slow suites. |
 
 `block-dangerous.sh` and `protect-files.sh` have **no** bypass. Those operations are human

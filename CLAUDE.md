@@ -47,8 +47,8 @@ path end to end and is designed to be deleted on day one.
 | Web | Angular 21, Nx, PrimeNG, TypeScript strict |
 | AuthN | Google Cloud Identity (`gcp`) or Microsoft Entra ID (`azure`) |
 | AuthZ | Keycloak — provider-independent, roles and policies live there |
-| Tests | xUnit + Testcontainers-free integration suite; Vitest; Playwright |
-| Quality | SonarQube, Gitleaks, CodeQL, `dotnet format`, ESLint, Prettier |
+| Tests | xUnit + Testcontainers-based integration suite; Vitest; Playwright |
+| Quality | SonarQube Community Build (free, self-hosted), Gitleaks, CodeQL, `dotnet format`, ESLint, Prettier |
 
 ## Architecture
 
@@ -80,12 +80,15 @@ src/frontend/
 
 ```
 Api → Infrastructure → Application → Domain
-Api → Contracts ← Application
+Api → Contracts
 ```
 
 - `Domain` references nothing. No EF Core, no ASP.NET, no third-party framework.
-- `Application` may reference `Domain` and `Contracts`. It declares ports (interfaces); it
-  never references `Infrastructure` or `Api`.
+- `Application` may reference `Domain` — and **not** `Contracts`. The Application layer owns its
+  own models; `Api` maps them to the wire DTOs. Otherwise a breaking API change would force a
+  change to the use cases themselves. It declares ports (interfaces); it never references
+  `Infrastructure` or `Api`.
+- `Contracts` references nothing else. It is the wire format, shared with API consumers.
 - `Infrastructure` implements those ports. It is the only project that knows about EF Core,
   Redis, HTTP clients, or a cloud SDK.
 - `Api` composes. Controllers are thin: validate, delegate to a handler, shape a response.
@@ -201,7 +204,11 @@ integration tests for anything crossing a boundary, Playwright for critical jour
 2. **Never `git push` without explicit human approval**, on any branch, to any remote, every
    time. Committing is fine; pushing is a human decision.
 3. **The quality gate runs before any push is proposed.** Zero new Blocker, Critical, or Major
-   SonarQube findings; ≥80% coverage on new code. Minor and Info may be triaged.
+   SonarQube findings; ≥80% coverage on new code. Minor and Info may be triaged. The gate
+   targets **SonarQube Community Build** (free, self-hosted): one project, one branch, no
+   branch analysis and no pull-request decoration — never pass `sonar.branch.name`,
+   `sonar.pullrequest.*`, or a `branch`/`pullRequest` MCP argument. See
+   `.claude/standards/sonarqube.md`.
 4. **Build with warnings as errors.** A warning is a failure.
 5. **Respect the layer dependency rule.** If a change needs to break it, the design is wrong.
 6. **Migration-based schema changes only.**
@@ -212,6 +219,12 @@ integration tests for anything crossing a boundary, Playwright for critical jour
 10. **Update the docs with the change.** If a convention changed, `CLAUDE.md` changes in the
     same PR. If a decision was made, an ADR lands with it. If a contract changed, the OpenAPI
     document and the generated types change with it.
+11. **Classify the task and state the model tier before the first tool call.** Frontier tier
+    for architecture, security review, complex debugging, high-risk refactors, and the final
+    pre-push review; workhorse tier for everything else. Say the recommendation out loud in
+    the first reply — and if this session is on a costlier model than the work needs, **stop
+    and say so** rather than spending it. The `model-routing` hook injects this on every
+    prompt; the policy is `.claude/model-routing.md`.
 
 ## Where to look next
 
@@ -220,7 +233,9 @@ integration tests for anything crossing a boundary, Playwright for critical jour
 | Deeper standards (one file per topic) | `.claude/standards/` |
 | Layering rules in detail | `.claude/standards/clean-architecture.md` |
 | Slash commands | `.claude/commands/` |
-| Hooks and their triggers | `.claude/hooks/` |
+| Hooks and their triggers | `.claude/hooks/` · `.claude/README.md` |
+| Model routing (enforced every prompt) | `.claude/model-routing.md` |
+| The SonarQube gate, Community Build setup | `.claude/standards/sonarqube.md` |
 | Five-stage workflow and guardrails | [docs/workflow.md](docs/workflow.md) |
 | Definition of Done | [docs/definition-of-done.md](docs/definition-of-done.md) |
 | Day-1 checklist | [docs/onboarding.md](docs/onboarding.md) |

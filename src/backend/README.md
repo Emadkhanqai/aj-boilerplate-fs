@@ -26,7 +26,7 @@ docker network create app-net          # once per host
 cp .env.example .env                   # then fill in MSSQL_SA_PASSWORD
 docker compose up -d db redis
 docker compose --profile tools run --rm migrate     # apply migrations
-dotnet run --project src/AjBoilerplate.Api          # http://localhost:5292, Swagger at /swagger
+dotnet run --project src/AjBoilerplate.Api          # http://localhost:5080, Swagger at /swagger
 ```
 
 ## Checks

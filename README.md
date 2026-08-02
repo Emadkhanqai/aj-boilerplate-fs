@@ -58,11 +58,15 @@ without forking the codebase. Those decisions are made here, written down as
   unit + integration + architecture tests, Playwright E2E, SonarQube (zero new
   Blocker/Critical/Major, ≥80% coverage on new code), Gitleaks, CodeQL, dependency
   vulnerability scanning.
-- **The agentic harness** — 7 hooks and the `/spec`, `/task`, `/qa`, `/review`, `/implement`,
+- **The agentic harness** — 8 hooks and the `/spec`, `/task`, `/qa`, `/review`, `/implement`,
   `/pre-push`, `/quality-gate`, `/new-migration`, `/sync` commands, all committed.
 - **A written process** — a [five-stage workflow](docs/workflow.md), a
   [Definition of Done](docs/definition-of-done.md), a [spec template](docs/specs/TEMPLATE.md),
   and a [Day-1 onboarding checklist](docs/onboarding.md).
+- **An architecture guide that matches the code** — [docs/architecture.md](docs/architecture.md)
+  walks every backend layer and every frontend library: what may and may not live there, what it
+  depends on, the rule the architecture tests actually enforce, a real example from the sample
+  slice, and the mistake newcomers make with it.
 
 What it is **not**: a platform, a CMS, an auth server, or a deployment you can apply as-is.
 `infra/` ships as reviewed IaC with no state and no real project identifiers — you configure a
@@ -134,8 +138,9 @@ Full command reference: [CLAUDE.md](CLAUDE.md).
 │   ├── specs/             feature specs (+ template)
 │   ├── api/               how the OpenAPI contract is produced and consumed
 │   ├── handoff/           session handoffs written by the Stop hook
+│   ├── architecture.md    every layer and library, and why each boundary exists
 │   ├── onboarding.md      Day-1 checklist
-│   ├── workflow.md        Spec → Plan → Execute → Verify → Review
+│   ├── workflow.md        Spec → Plan → Execute → Verify → Review, with diagrams
 │   └── definition-of-done.md
 ├── .github/
 │   ├── workflows/         backend-ci · frontend-ci · deploy (+ its reusable per-environment job)
@@ -144,6 +149,44 @@ Full command reference: [CLAUDE.md](CLAUDE.md).
     ├── gcp/               Terraform: Cloud Run, Cloud SQL, Memorystore, Secret Manager
     └── azure/             Bicep: Container Apps, Azure SQL, Cache for Redis, Key Vault
 ```
+
+## How work flows here
+
+Every change — a bug fix, a feature, a refactor — moves through the same five stages, and the same
+gates. The solid path is what you do; the shaded gates fire whether or not anyone remembers them.
+
+```mermaid
+flowchart LR
+  S1["1 · Spec<br/><i>/spec</i>"] --> H1{{"human<br/>approves"}}
+  H1 --> S2["2 · Plan<br/><i>/task</i>"]
+  S2 --> S3["3 · Execute<br/><i>/implement</i><br/>test first, one task"]
+  S3 --> S4["4 · Verify<br/><i>/qa · /pre-push</i>"]
+  S4 --> S5["5 · Review<br/><i>/review</i>, then a human"]
+  S5 --> PR(["Pull request → CI → merge"])
+
+  S4 -- "gate red" --> S3
+  S5 -- "blocker" --> S3
+  S5 -- "spec was wrong" --> S1
+
+  HOOKS["hooks · every edit and every shell command<br/>protect-files · block-dangerous · secret-scan<br/>auto-format · run-affected-tests · sonar-pre-push"]
+  GATES["CI · every push and pull request<br/>build with warnings as errors · format · lint<br/>unit · integration · architecture · E2E<br/>SonarQube · Gitleaks · CodeQL · dependency audit"]
+
+  HOOKS -.-> S3
+  HOOKS -.-> S4
+  GATES -.-> PR
+
+  classDef det fill:#f2f2f2,stroke:#888,color:#333
+  class HOOKS,GATES det
+```
+
+The distinction matters more than the stages do. The standards, commands, and agents in `.claude/`
+are **prose** — an agent reads them, usually follows them, and occasionally does not. The hooks,
+the permission policy, the architecture tests, and CI are **deterministic**: they fire every time,
+identically, and a `PreToolUse` hook can refuse a tool call before it happens. That is why a rule
+worth enforcing lives in a hook rather than only in a document.
+
+The full picture — every stage, every hook, which agent does what, and one small feature followed
+through all five stages with real commands — is in **[docs/workflow.md](docs/workflow.md)**.
 
 ## Related repositories
 
@@ -199,8 +242,9 @@ required reviewers to `staging` and `prod`. Those protection rules **are** the a
 ## Contributing
 
 Read [docs/workflow.md](docs/workflow.md) and [docs/definition-of-done.md](docs/definition-of-done.md)
-before opening a pull request. In short: spec first, failing test first, keep the diff small,
-green gate, and a human reviews every change — including the ones an agent wrote.
+before opening a pull request, and [docs/architecture.md](docs/architecture.md) before your first
+change to either stack. In short: spec first, failing test first, keep the diff small, green gate,
+and a human reviews every change — including the ones an agent wrote.
 
 ## Licence
 

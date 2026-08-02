@@ -8,12 +8,23 @@
 # FAILS CLOSED. If SonarQube is unreachable or unconfigured, the gate has NOT
 # passed and the push is blocked, with an explanation of how to configure it.
 #
+# TARGETS SONARQUBE COMMUNITY BUILD (the free, self-hosted edition). Community
+# analyses exactly ONE branch — the project's main/default branch — so this hook
+# queries the default branch and passes neither `branch` nor `pullRequest`.
+# Branch analysis and pull-request analysis/decoration start at Developer
+# Edition; this boilerplate deliberately does not depend on either.
+#
 # Configuration (environment, never committed):
 #   SONAR_HOST_URL     e.g. http://localhost:9000
 #   SONAR_TOKEN        analysis/user token — a secret
 #   SONAR_PROJECT_KEY  falls back to sonar-project.properties
-#   SONAR_BRANCH       optional; branch name to query
 #   SONAR_RUN_SCAN=1   run a full scan before querying (slow; off by default)
+#
+#   SONAR_BRANCH       OPT-IN, OFF BY DEFAULT, AND PAID-EDITION ONLY.
+#                      Appends `&branch=…` to the API calls. That parameter needs
+#                      Developer Edition or above; on Community Build the server
+#                      has no such branch to report on and the gate will fail
+#                      closed. Leave it unset unless you are on a paid edition.
 #
 # ESCAPE HATCH:
 #   SONAR_GATE_SKIP=1  bypasses this gate.
@@ -115,9 +126,19 @@ fi
 Set SONAR_PROJECT_KEY, or add sonar.projectKey to sonar-project.properties."
 
 HOST="${HOST%/}"
+
+# --- Branch scope -----------------------------------------------------------
+# Default (Community Build): no `branch` parameter at all. Community analyses a
+# single branch, so the unqualified query IS the main-branch query — which is
+# also what the SonarQube MCP server does when you omit `branch`/`pullRequest`.
+# There is no `pullRequest` support here by design: PR analysis is a paid
+# feature, and a gate that silently no-ops on Community would be worse than none.
 BRANCH_Q=""
 if [ -n "${SONAR_BRANCH:-}" ]; then
   BRANCH_Q="&branch=${SONAR_BRANCH}"
+  printf '[sonar-pre-push] SONAR_BRANCH=%s — querying a named branch.\n' "${SONAR_BRANCH}" >&2
+  printf '[sonar-pre-push] This requires SonarQube Developer Edition or above. On Community\n' >&2
+  printf '[sonar-pre-push] Build, unset SONAR_BRANCH: the default branch is the only one there is.\n' >&2
 fi
 
 api() {   # api <path-with-query>  -> body on stdout, non-zero on transport failure
@@ -154,6 +175,9 @@ Start the server, check SONAR_HOST_URL / SONAR_TOKEN, then retry.
 printf '%s' "$GATE" | grep -q '"projectStatus"' || \
   block "SonarQube returned an unexpected response for project '${KEY}'.
 The gate has NOT passed.
+
+If SONAR_BRANCH is set, unset it: naming a branch needs Developer Edition or
+above, and SonarQube Community Build rejects it.
 
   $(printf '%s' "$GATE" | head -c 400)"
 

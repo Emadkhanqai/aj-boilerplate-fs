@@ -5,6 +5,10 @@ name: Backend CI
 #          → migration validation + integration tests (with coverage)
 #          → quality gate → dependency vulnerabilities → secret scan → code scanning
 #
+# Every gate runs on pull requests EXCEPT the SonarQube quality gate, which runs
+# only on pushes to main. That is a Community Build constraint, explained in full
+# above the `quality-gate` job.
+#
 # Nothing here needs a cloud credential. See deploy.yml for the deployment path, which uses
 # GitHub OIDC and holds no long-lived credentials either.
 
@@ -299,14 +303,30 @@ jobs:
   #   · ≥80% coverage on new code
   # `sonar.qualitygate.wait=true` makes this job fail when that gate fails.
   #
-  # The `if:` guard exists so a fresh clone of the boilerplate is not permanently
-  # red before a SonarQube server has been configured. REMOVE IT once you have
-  # set SONAR_HOST_URL — a gate that can silently skip itself is not a gate.
+  # PUSH-TO-MAIN ONLY, AND THAT IS DELIBERATE.
+  # This targets SonarQube Community Build (the free edition), which analyses
+  # exactly ONE branch: the project's default branch. Every analysis lands on the
+  # same project and overwrites the previous one. Running the scanner from a
+  # pull-request build would therefore replace main's result with the state of an
+  # unmerged branch, leaving the dashboard describing code that is not on main.
+  #
+  # So: no scanner on pull requests, and NO PULL-REQUEST DECORATION EXISTS — Sonar
+  # findings will never appear as PR comments. Branch analysis and PR decoration
+  # start at Developer Edition, and this boilerplate deliberately does not depend
+  # on them. Pull requests are gated by everything else in this file (format,
+  # build-as-errors, tests + coverage, vulnerable packages, Gitleaks, CodeQL) plus
+  # the local .claude/hooks/sonar-pre-push.sh gate, which blocks a push while any
+  # Blocker/Critical/Major is open. See .claude/standards/sonarqube.md.
+  #
+  # The `vars.SONAR_HOST_URL` half of the guard exists so a fresh clone of the
+  # boilerplate is not permanently red before a SonarQube server has been
+  # configured. REMOVE THAT HALF once you have set SONAR_HOST_URL — a gate that
+  # can silently skip itself is not a gate. Keep the event/ref half.
   # --------------------------------------------------------------------------
   quality-gate:
     name: SonarQube quality gate
     needs: build
-    if: vars.SONAR_HOST_URL != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.SONAR_HOST_URL != ''
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -347,6 +367,9 @@ jobs:
           dotnet tool install --global dotnet-coverage
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
+      # No /d:sonar.branch.name and no /d:sonar.pullrequest.* — both require
+      # Developer Edition or above. On Community Build this analysis is the
+      # default branch's analysis, by definition.
       - name: Analyse, build, test, and wait for the gate
         shell: bash
         env:

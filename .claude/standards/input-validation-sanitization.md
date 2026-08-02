@@ -11,7 +11,7 @@ will be displayed. Never trust the client.
   controllers, and not *only* in the domain (the domain still guards its own invariants as the
   last line of defence).
 - **Fail fast, fail specific:** return `400` with per-field messages in `errors[]` and
-  `code = VALIDATION_FAILED` (see [`error-handling.md`](error-handling.md)).
+  `code = VALIDATION_ERROR` (see [`error-handling.md`](error-handling.md)).
 - **Whitelist, don't blacklist.** Constrain types, lengths, ranges, formats, and allowed sets:
   - Numeric quantities → explicit range, and reject negatives unless negatives are meaningful.
   - Enumerations → must be a known member; reject unknown values rather than defaulting.

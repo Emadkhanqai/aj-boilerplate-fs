@@ -17,7 +17,7 @@ Create an EF Core migration following [`../standards/ef-core.md`](../standards/e
    dotnet ef migrations add <PascalCaseName> \
      --project src/AjBoilerplate.Infrastructure \
      --startup-project src/AjBoilerplate.Api \
-     --output-dir Migrations
+     --output-dir Persistence/Migrations
    ```
 4. **Review the generated `Up()` and `Down()` by hand**, using the full checklist in
    [`../templates/ef-migration.md`](../templates/ef-migration.md). Check for:

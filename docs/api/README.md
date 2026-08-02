@@ -108,7 +108,7 @@ Branch on `code`. Never on `message`.
 
 ```ts
 // code is stable and part of the contract; message is human-readable and may change.
-if (error.code === 'CONCURRENCY_CONFLICT') { /* offer to reload */ }
+if (error.code === 'CONFLICT') { /* offer to reload */ }
 ```
 
 Every error state in the UI surfaces the response's `traceId`, because that is the value a user

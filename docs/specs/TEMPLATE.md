@@ -42,7 +42,7 @@
 |---|---|
 | AC-1 | **Given** <starting state> **When** <action> **Then** <observable outcome> |
 | AC-2 | **Given** … **When** … **Then** … |
-| AC-3 | **Given** <an invalid input> **When** … **Then** the API returns `400` with code `VALIDATION_FAILED` and no state changes |
+| AC-3 | **Given** <an invalid input> **When** … **Then** the API returns `400` with code `VALIDATION_ERROR` and no state changes |
 | AC-4 | **Given** <an unauthorised caller> **When** … **Then** the API returns `403` and the attempt is recorded |
 
 Each acceptance criterion must be traceable to at least one test in §6, and the pull request
@@ -81,9 +81,9 @@ formats. Note anything that must never be returned to a client.
 
 | HTTP | `code` | When |
 |---|---|---|
-| `400` | `VALIDATION_FAILED` | request failed validation; `errors[]` lists the field failures |
+| `400` | `VALIDATION_ERROR` | request failed validation; `errors[]` lists the field failures |
 | `404` | `X_NOT_FOUND` | the resource does not exist or is not visible to this caller |
-| `409` | `CONCURRENCY_CONFLICT` | `RowVersion` did not match |
+| `409` | `CONFLICT` | `RowVersion` did not match |
 | `422` | `<DOMAIN_RULE>` | a domain invariant rejected the request |
 
 New codes are `SCREAMING_SNAKE_CASE`, stable forever, and listed here before they are used.

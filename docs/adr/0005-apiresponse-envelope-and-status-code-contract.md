@@ -52,7 +52,7 @@ Collections use `PagedResponse<T>`, carrying `items`, `page`, `pageSize`, `total
    conflict or optimistic-concurrency failure, `422` domain-rule violation, `429` rate-limited,
    `500` unhandled.
 3. **`code` is stable, `message` is not.** `code` is `SCREAMING_SNAKE_CASE`
-   (`ITEM_NOT_FOUND`, `VALIDATION_FAILED`, `CONCURRENCY_CONFLICT`), part of the contract, and the
+   (`VALIDATION_ERROR`, `CONFLICT`), part of the contract, and the
    only thing a client may branch on. `message` is for humans and may be reworded or localised
    at any time.
 4. **`traceId` is always present** and matches the correlation identifier in the logs and the
@@ -72,8 +72,8 @@ Collections use `PagedResponse<T>`, carrying `items`, `page`, `pageSize`, `total
   cross-cutting response behaviour.
 - `traceId` on every response makes support tractable: the identifier the user reads out is the
   identifier in the logs.
-- Stable `code` values let the UI react meaningfully — a `CONCURRENCY_CONFLICT` can offer to
-  reload, a `VALIDATION_FAILED` can map `errors[]` onto form fields — without parsing prose.
+- Stable `code` values let the UI react meaningfully — a `CONFLICT` can offer to
+  reload, a `VALIDATION_ERROR` can map `errors[]` onto form fields — without parsing prose.
 - Adding a field to the envelope is backward compatible for every existing client.
 
 ### Negative
