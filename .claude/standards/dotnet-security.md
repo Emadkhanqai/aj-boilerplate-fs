@@ -16,6 +16,14 @@ Microsoft-aligned hardening for the backend. Complements
 - Map Keycloak roles/permissions into ASP.NET Core **authorization policies**. Cache permission
   lookups (distributed cache) with a short TTL and an explicit invalidation path. Enforce
   **deny by default**.
+- **Resolve roles from `ClaimTypes.Role`.** `JwtBearerHandler` applies .NET's default inbound
+  claim-type mapping *before* `OnTokenValidated` and before any `IClaimsTransformation` runs, and
+  that mapping **renames a flat top-level `roles` claim to `ClaimTypes.Role`**. Code that looks for
+  a claim literally named `roles` finds nothing against such a realm — and fails closed, silently.
+- **One extraction path per value.** Two pieces of code that each resolve "the caller's role" from a
+  `ClaimsPrincipal` their own way will eventually disagree the moment the token shape changes, and
+  the one nobody exercises will be wrong for weeks. Extract once, reuse it, and test it against the
+  claim shape the *framework* produces — not the one the token contains.
 
 ```csharp
 builder.Services.AddAuthorization(options =>
