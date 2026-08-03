@@ -8,6 +8,7 @@ feature needs it — until then it lives in the feature that owns it.
 | `StatusPillComponent` | `app-status-pill` | Maps a status string to a tone class. Edit `toneFor` for your statuses. |
 | `ConfirmDialogComponent` | `app-confirm-dialog` | The app's own yes/no modal in place of `window.confirm()`. |
 | `EmptyStateComponent` | `app-empty-state` | The "nothing here yet" panel body, with an optional action slot. |
+| `WhatsNewModalComponent` | `app-whats-new-modal` | "What's new" feature spotlight, mounted by the shell on every route change. Bespoke markup + CSS — see the exception below. |
 | `QUERY_CLIENT` | — | The shared TanStack `QueryClient`, wired to toast otherwise-unhandled API errors. |
 
 ## Rules
@@ -16,4 +17,16 @@ feature needs it — until then it lives in the feature that owns it.
   `p-select`. Consistency of focus, disabled, and keyboard behaviour is the whole point.
 - Styling comes from `apps/web/src/design/components.css` and the tokens it reads. Do not
   redefine colours in a component.
+
+### The one exception: `whats-new-modal`
+
+`WhatsNewModalComponent` breaks both rules above, deliberately and with sign-off. It is a one-off
+announcement surface — gradient hero, confetti, seven keyframe animations — whose visual design
+*is* the deliverable, has no PrimeNG equivalent, and must not read as product chrome, so its
+literal colours belong in its own stylesheet rather than in the shared token set. The exception is
+scoped to that single component, is restated in its class comment, and explicitly does **not**
+cover accessibility: the component carries `role="dialog"`, `aria-modal`, `aria-labelledby`, a
+labelled close button, and `role="tab"`/`aria-selected` dots itself, precisely because there is no
+PrimeNG component supplying them. Do not treat it as precedent — the next bespoke-looking request
+is still PrimeNG-only until someone argues this case again.
 - No `HttpClient`, no routing decisions, no feature imports.

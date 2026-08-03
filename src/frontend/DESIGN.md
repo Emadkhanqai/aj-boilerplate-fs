@@ -102,6 +102,23 @@ template. Use `p-button`, `pInputText`, `p-select`, `pTextarea`, `p-table`. This
 stylistic — it is how focus rings, disabled states, keyboard behaviour, and ARIA wiring stay
 consistent without anyone having to remember them.
 
+> **Documented exception — `app-whats-new-modal`** (`libs/shared/ui/src/lib/whats-new-modal`).
+> The "What's new" feature spotlight is bespoke markup with its own literal colour values and
+> seven keyframe animations, kept in a component stylesheet rather than in `tokens.css` /
+> `components.css`. That is deliberate on both counts: it is a one-off announcement surface that
+> must deliberately *not* read as product chrome, so its palette is precisely what should never
+> enter the shared token set, and no PrimeNG component renders it. The exception is bounded to
+> this one component and does not cover accessibility — it carries `role="dialog"`, `aria-modal`,
+> `aria-labelledby`, a labelled close button, and `role="tab"` dots itself, because PrimeNG is
+> not there to supply them. Everything else stays PrimeNG-only and token-driven.
+>
+> This exception also costs one build-config change worth knowing about: the component's
+> stylesheet minifies to ~7.8 kB, so `apps/web/project.json`'s `anyComponentStyle` budget was
+> raised from 4 kB / 8 kB to **8 kB / 10 kB**. That budget exists to flag components carrying too
+> much bespoke CSS, and it was flagging correctly — this component genuinely is that. If a
+> *second* component ever approaches the new ceiling, the answer is to question that component,
+> not to raise the budget again.
+
 | Pattern | Rule |
 |---|---|
 | Buttons | Exactly one primary action per view. Everything else is `secondary` or `text`. Destructive actions use `severity="danger"` and are always confirmed. |

@@ -14,13 +14,20 @@ namespace AjBoilerplate.IntegrationTests.Support;
 /// pipeline — the anonymous path is genuinely tested, not bypassed. The header value is a role name
 /// and is emitted as a <see cref="ClaimTypes.Role"/> claim, exactly as the Keycloak transformation
 /// would. An optional <c>X-Test-Group</c> header (comma-separated) emits one <c>groups</c> claim per
-/// value.
+/// value, and an optional <c>X-Test-User</c> header overrides the subject identifier — needed by any
+/// test that must prove two DIFFERENT people are treated independently.
 /// </summary>
 public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
     public const string SchemeName = "Test";
     public const string RoleHeader = "X-Test-Role";
     public const string GroupHeader = "X-Test-Group";
+
+    /// <summary>Overrides the subject identifier the request authenticates as.</summary>
+    public const string UserHeader = "X-Test-User";
+
+    /// <summary>The subject used when <see cref="UserHeader"/> is absent.</summary>
+    public const string DefaultUserId = "test-oid";
 
     public TestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
@@ -37,9 +44,13 @@ public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationScheme
             return Task.FromResult(AuthenticateResult.NoResult());
         }
 
+        var userId = Request.Headers.TryGetValue(UserHeader, out var user) && !string.IsNullOrWhiteSpace(user)
+            ? user.ToString()
+            : DefaultUserId;
+
         var claims = new List<Claim>
         {
-            new("oid", "test-oid"),
+            new("oid", userId),
             new("name", "Test User"),
             new(ClaimTypes.Role, role.ToString()),
         };

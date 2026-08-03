@@ -27,5 +27,5 @@ public sealed class ClaimsCurrentActor : ICurrentActor
 /// </summary>
 public sealed class SystemCurrentActor : ICurrentActor
 {
-    public Actor GetActor() => new("system", "System", string.Empty);
+    public Actor GetActor() => new(ActorIdentifiers.System, "System", string.Empty);
 }

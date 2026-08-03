@@ -9,6 +9,7 @@ The only place in the workspace that talks HTTP.
 | `api-error.ts` | `ApiError`, plus `isConflictError` / `conflictData` / `apiErrorMessage` for the optimistic-concurrency (409) path. |
 | `auth-token.ts`, `session-expiry.ts` | DI seams, so this library never imports `@aj-boilerplate/auth` (the module-boundary rule forbids it). They are bound in `apps/web/src/app/app.config.ts`. |
 | `items-api.service.ts` | **SAMPLE** — the per-feature service pattern. Delete with `libs/feature-items`. |
+| `feature-announcements-api.service.ts` | "What's new" announcements: `unack(path)` / `ack(ids)`. Also declares `FeatureAnnouncement` **temporarily** — the endpoint is not in the OpenAPI document yet. Regenerate the types when it is, then delete the local interface. |
 
 ## Adding an API service
 

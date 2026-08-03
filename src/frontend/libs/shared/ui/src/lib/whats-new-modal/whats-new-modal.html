@@ -1,0 +1,96 @@
+<div class="wn-backdrop" (click)="onBackdrop()" role="presentation">
+  <div class="wn-panel" role="dialog" aria-modal="true" aria-labelledby="wn-title">
+
+    <button type="button" class="wn-close" (click)="dismiss()" aria-label="Close">
+      <i class="pi pi-times"></i>
+    </button>
+
+    <div class="wn-hero">
+      <!-- Sparkles + ribbon decoration around the spotlight. All
+           bounded to the hero band by overflow:hidden, pointer-
+           events off so they never intercept clicks. -->
+      <div class="wn-confetti" aria-hidden="true">
+        <span class="wn-conf wn-conf--ribbon-1">〰️</span>
+        <span class="wn-conf wn-conf--star-1">⭐</span>
+        <span class="wn-conf wn-conf--dot-1"></span>
+        <span class="wn-conf wn-conf--ribbon-2">〰️</span>
+        <span class="wn-conf wn-conf--star-2">✨</span>
+        <span class="wn-conf wn-conf--dot-2"></span>
+        <span class="wn-conf wn-conf--dot-3"></span>
+        <span class="wn-conf wn-conf--star-3">✦</span>
+      </div>
+
+      <div class="wn-spotlight" aria-hidden="true">
+        <div class="wn-spotlight-glow"></div>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M3 3 h18 v12 l-6 6 H3 z" fill="#FCD34D" stroke="#D97706" stroke-width="0.6" stroke-linejoin="round"/>
+          <path d="M21 15 h-6 v6 z" fill="#F59E0B"/>
+        </svg>
+      </div>
+
+      <div class="wn-eyebrow">
+        <span class="wn-eyebrow-emoji" aria-hidden="true">🎁</span>
+        {{ eyebrowLabel() }}
+      </div>
+
+      <h2 id="wn-title" class="wn-title">{{ title() }}</h2>
+    </div>
+
+    <div class="wn-body">
+      @for (p of parts(); track $index; let i = $index) {
+        @if (p.kind === 'bullet') {
+          <div class="wn-bullet" [class]="bulletTone(i)">
+            <span class="wn-bullet-icon" aria-hidden="true">
+              {{ p.emoji ?? '•' }}
+            </span>
+            <span class="wn-bullet-text">
+              <span class="wn-bullet-title">{{ p.title }}</span>
+              @if (p.description) {
+                <span class="wn-bullet-desc">{{ p.description }}</span>
+              }
+            </span>
+          </div>
+        } @else {
+          <p class="wn-paragraph">{{ p.text }}</p>
+        }
+      }
+    </div>
+
+    @if (total() > 1) {
+      <div class="wn-dots" role="tablist" [attr.aria-label]="paginationLabel()">
+        @for (f of features(); track f.id; let i = $index) {
+          <button type="button"
+                  class="wn-dot"
+                  [class.wn-dot--active]="i === currentIndex()"
+                  role="tab"
+                  [attr.aria-selected]="i === currentIndex()"
+                  [attr.aria-label]="(i + 1) + ' / ' + total()"
+                  (click)="goTo(i)">
+          </button>
+        }
+      </div>
+    }
+
+    <footer class="wn-foot">
+      @if (total() > 1) {
+        <button type="button"
+                class="wn-btn-ghost"
+                [disabled]="isFirst()"
+                (click)="prev()">
+          <i class="pi pi-arrow-left"></i>
+          {{ previousLabel() }}
+        </button>
+        <span class="wn-counter">{{ (currentIndex() + 1) }} / {{ total() }}</span>
+      }
+      <button type="button" class="wn-btn-primary" (click)="next()">
+        @if (isLast()) {
+          {{ gotItLabel() }}
+          <span class="wn-btn-sparkle" aria-hidden="true">✨</span>
+        } @else {
+          {{ nextLabel() }}
+          <i class="pi pi-arrow-right"></i>
+        }
+      </button>
+    </footer>
+  </div>
+</div>

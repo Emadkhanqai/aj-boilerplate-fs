@@ -1,3 +1,4 @@
+using AjBoilerplate.Domain.Features;
 using AjBoilerplate.Domain.Items;
 using AjBoilerplate.Domain.Messaging;
 using AjBoilerplate.Domain.Messaging.Inbox;
@@ -18,6 +19,12 @@ public sealed class AppDbContext : DbContext
 
     /// <summary>SAMPLE SLICE — drop with the rest of the Item sample.</summary>
     public DbSet<Item> Items => Set<Item>();
+
+    /// <summary>"What's new" announcements. Content, not user input — rows arrive by migration.</summary>
+    public DbSet<FeatureAnnouncement> FeatureAnnouncements => Set<FeatureAnnouncement>();
+
+    /// <summary>Per-user dismissals of a <see cref="FeatureAnnouncement"/>.</summary>
+    public DbSet<FeatureAcknowledgement> FeatureAcknowledgements => Set<FeatureAcknowledgement>();
 
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 

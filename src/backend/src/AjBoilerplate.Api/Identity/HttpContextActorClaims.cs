@@ -23,7 +23,9 @@ public sealed class HttpContextActorClaims : IActorClaims
         User?.FindFirst("oid")?.Value
             ?? User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? User?.FindFirst("sub")?.Value
-            ?? "anonymous";
+            // The shared constant, not a literal: a use case that records something per user must be
+            // able to recognise "there is no real subject here" using the same value produced here.
+            ?? ActorIdentifiers.Anonymous;
 
     public string Name =>
         User?.FindFirst("name")?.Value

@@ -61,4 +61,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeader, role);
         return client;
     }
+
+    /// <summary>A client whose requests carry the given role AND identify as a specific person —
+    /// for the per-user behaviour that two clients holding the same role cannot demonstrate.</summary>
+    public HttpClient CreateClientAs(string role, string userId)
+    {
+        var client = CreateClientAs(role);
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, userId);
+        return client;
+    }
 }

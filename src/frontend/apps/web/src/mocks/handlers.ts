@@ -7,6 +7,7 @@ import type {
   PagedResponse,
   UpdateItemRequest,
 } from '@aj-boilerplate/data-access/api-types';
+import type { FeatureAnnouncement } from '@aj-boilerplate/data-access/api-client';
 
 /**
  * Offline API mock for the `demo` build configuration.
@@ -73,6 +74,59 @@ let items: ItemResponse[] = seed();
 
 export function resetItems(): void {
   items = seed();
+}
+
+/* ---------------------------------------------------------------------------------------------
+ * "What's new" feature announcements.
+ *
+ * ONE sample announcement so the demo build actually shows the spotlight modal. This is mock
+ * data, not seed data — the real announcements are rows the backend owns. The body deliberately
+ * exercises BOTH authoring conventions the modal's parser understands: a plain paragraph, and
+ * `- <emoji> <title> — <description>` bullet lines that become tinted benefit cards.
+ * ------------------------------------------------------------------------------------------ */
+
+function seedAnnouncements(): FeatureAnnouncement[] {
+  return [
+    {
+      id: '3f1a6c7e-2b44-4d1e-9f0a-77c2d8e5b910',
+      key: 'saved-views-v1',
+      titleEn: 'Saved views are here 🔖',
+      titleAr: 'العروض المحفوظة متاحة الآن 🔖',
+      bodyEn: [
+        'Set up a list the way you like it once, then jump straight back to it from the sidebar.',
+        '',
+        '- 🔖 Saved views — pin any combination of filters and sorting under a name you choose',
+        '- ⚡ Instant search — results narrow as you type, no page reload in between',
+        '- 🌙 Dark mode — follows your system setting automatically, or pick one and stay there',
+      ].join('\n'),
+      bodyAr: [
+        'اضبط القائمة كما تحب مرة واحدة، ثم عد إليها مباشرة من الشريط الجانبي.',
+        '',
+        '- 🔖 العروض المحفوظة — ثبّت أي مجموعة من عوامل التصفية والترتيب تحت اسم تختاره',
+        '- ⚡ بحث فوري — تتقلّص النتائج أثناء الكتابة دون إعادة تحميل الصفحة',
+        '- 🌙 الوضع الداكن — يتبع إعداد نظامك تلقائيًا، أو اختر واحدًا والزمه',
+      ].join('\n'),
+      displayOrder: 0,
+      createdAt: new Date(Date.UTC(2026, 0, 15, 9, 0, 0)).toISOString(),
+    },
+  ];
+}
+
+const announcements: FeatureAnnouncement[] = seedAnnouncements();
+
+/**
+ * Ids this browser session has acknowledged. In-memory, so a reload replays the announcement —
+ * which is what makes the demo deterministic, exactly like the item store above. The real API
+ * persists acknowledgement per user, server-side, so it survives reloads and other devices.
+ */
+const acknowledged = new Set<string>();
+
+export function resetAnnouncements(): void {
+  acknowledged.clear();
+}
+
+interface AcknowledgeFeaturesRequest {
+  featureIds: string[];
 }
 
 export const handlers = [
@@ -157,6 +211,24 @@ export const handlers = [
       return HttpResponse.json(failure('Item not found.', 'NOT_FOUND'), { status: 404 });
     }
     items = items.filter((i) => i.id !== params['id']);
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  // The sample announcement carries no page restriction, so it matches every route — the real
+  // API compares the normalised `path` against each announcement's registered prefixes.
+  http.get('/api/v1/features/unack', async () => {
+    await delay(LATENCY_MS);
+    const pending = announcements.filter((a) => !acknowledged.has(a.id));
+    return HttpResponse.json(envelope(pending));
+  }),
+
+  http.post('/api/v1/features/ack', async ({ request }) => {
+    await delay(LATENCY_MS);
+    const body = (await request.json()) as AcknowledgeFeaturesRequest;
+    // Idempotent: acknowledging an id twice is a no-op, exactly as server-side.
+    for (const id of body.featureIds ?? []) {
+      acknowledged.add(id);
+    }
     return new HttpResponse(null, { status: 204 });
   }),
 ];

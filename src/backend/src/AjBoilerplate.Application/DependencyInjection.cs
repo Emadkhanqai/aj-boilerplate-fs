@@ -1,4 +1,5 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Identity;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Application.Messaging;
@@ -18,6 +19,8 @@ public static class DependencyInjection
 
         // SAMPLE SLICE — delete with the rest of the Item sample.
         services.AddScoped<IItemService, ItemService>();
+
+        services.AddScoped<IFeatureAnnouncementService, FeatureAnnouncementService>();
 
         services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
 

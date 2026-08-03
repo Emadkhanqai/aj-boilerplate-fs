@@ -1,4 +1,5 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Infrastructure.Cloud;
 using AjBoilerplate.Infrastructure.Email;
@@ -35,6 +36,8 @@ public static class DependencyInjection
 
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IInboxRepository, InboxRepository>();
+
+        services.AddScoped<IFeatureAnnouncementRepository, FeatureAnnouncementRepository>();
 
         // SAMPLE SLICE — delete with the rest of the Item sample.
         services.AddScoped<IItemRepository, ItemRepository>();
