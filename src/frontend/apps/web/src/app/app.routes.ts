@@ -1,5 +1,6 @@
 import type { Routes } from '@angular/router';
 import { authGuard, capabilityGuard } from '@aj-boilerplate/auth';
+import { unsavedChangesGuard } from '@aj-boilerplate/shared/util';
 import { AppLayoutComponent } from '@aj-boilerplate/shell';
 import { LoginPageComponent } from './pages/login-page/login-page';
 import { NotFoundPageComponent } from './pages/not-found-page/not-found-page';
@@ -35,15 +36,20 @@ export const appRoutes: Routes = [
         path: 'items',
         loadComponent: () => import('@aj-boilerplate/feature-items').then((m) => m.ItemListPageComponent),
       },
+      // Both form routes carry `unsavedChangesGuard`: it prompts (via the page's own
+      // `app-confirm-dialog`) before a navigation that would discard a dirty form, and is a
+      // no-op on a pristine one. See `libs/shared/util/src/lib/unsaved-changes.guard.ts`.
       {
         path: 'items/new',
         loadComponent: () => import('@aj-boilerplate/feature-items').then((m) => m.ItemFormPageComponent),
         canActivate: [capabilityGuard('canCreate')],
+        canDeactivate: [unsavedChangesGuard],
       },
       {
         path: 'items/:id',
         loadComponent: () => import('@aj-boilerplate/feature-items').then((m) => m.ItemFormPageComponent),
         canActivate: [capabilityGuard('canEdit')],
+        canDeactivate: [unsavedChangesGuard],
       },
       // ---- end sample feature ----
     ],

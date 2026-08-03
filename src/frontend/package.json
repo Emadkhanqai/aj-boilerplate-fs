@@ -2,6 +2,11 @@
   "name": "@aj-boilerplate/source",
   "version": "0.0.0",
   "license": "UNLICENSED",
+  "//engines": "Pinned to ONE Node major, declared identically in three places that must never drift: this field, `.nvmrc`, and `NODE_VERSION` in `.github/workflows/frontend-ci.yml`. The major is the boundary that matters — Angular and Nx publish support matrices per Node major, and a mismatched major is what produces the 'green in CI, broken on my machine' build. Patch-level drift within the major is deliberately allowed: pinning an exact patch here while CI floats on '22' would create a NEW asymmetry, and pinning both goes stale the moment that patch is superseded.",
+  "engines": {
+    "node": ">=22.0.0 <23.0.0",
+    "npm": ">=10.0.0"
+  },
   "scripts": {
     "generate:api": "openapi-typescript http://localhost:5080/swagger/v1/swagger.json -o libs/data-access/api-types/src/lib/types.ts",
     "dev": "nx serve web",

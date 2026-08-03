@@ -1,0 +1,132 @@
+// Workspace settings.
+//
+// DELIBERATELY MINIMAL. This file exists to make the editor agree with the configuration
+// this repository already has — `.editorconfig`, `src/frontend/.prettierrc`, the ESLint
+// flat config, and `.gitattributes` — not to add a second, competing source of truth.
+//
+// The rule: if a setting duplicates something `.editorconfig` or `.prettierrc` already
+// says, it does not belong here. Two files stating the same rule will disagree eventually,
+// and the one that wins will be whichever tool happens to run last. So there is no
+// `editor.tabSize`, no `editor.insertSpaces`, and no quote-style setting below — the
+// EditorConfig and Prettier extensions read those from the real config files.
+//
+// What IS here: which formatter owns which language, and which noise to keep out of search.
+//
+// Personal preferences (themes, font size, keybindings) belong in your user settings, not
+// in a committed workspace file. `.gitignore` tracks only `settings.json`, `tasks.json`,
+// `launch.json`, and `extensions.json` under `.vscode/`; everything else there is yours.
+{
+  // --- Formatting ----------------------------------------------------------
+  // Format on save, with ESLint's autofixable rules applied afterwards. `explicit` means
+  // "on an explicit save" — not on autosave, where a fix mid-keystroke is disorienting.
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+
+  // Prettier owns the frontend languages. `requireConfig` keeps it from formatting files
+  // that no Prettier config covers — without it, Prettier would impose its own defaults on
+  // every Markdown and JSON file in the repository, including ones `.editorconfig` and
+  // `dotnet format` already govern.
+  "prettier.requireConfig": true,
+  // Prettier reads `.editorconfig` for indent width and end-of-line. This is the default;
+  // it is stated because it is the mechanism that stops the two files disagreeing.
+  "prettier.useEditorConfig": true,
+
+  "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[javascript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[html]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[css]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[scss]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[jsonc]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+  "[yaml]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+
+  // C# is formatted by the C# extension, which reads the `[*.cs]` section of
+  // `.editorconfig` — the same rules `dotnet format --verify-no-changes` enforces in CI.
+  // Any other formatter here means the format gate fails on files you saved.
+  "[csharp]": { "editor.defaultFormatter": "ms-dotnettools.csharp" },
+
+  // Markdown: format on save is off. `.editorconfig` sets `trim_trailing_whitespace = false`
+  // for Markdown because two trailing spaces are a hard line break, and a formatter that
+  // does not know that silently rewrites the document.
+  "[markdown]": {
+    "editor.formatOnSave": false,
+    "editor.wordWrap": "on",
+    "editor.trimAutoWhitespace": false,
+    "files.trimTrailingWhitespace": false
+  },
+
+  // --- Line endings --------------------------------------------------------
+  // LF, matching `.editorconfig` and `.gitattributes`. `\n` here is what stops a Windows
+  // editor writing CRLF into a file that `dotnet format` will then reject in CI and that
+  // would break the shebang in `.claude/hooks/*.sh`. See the header of `.gitattributes`.
+  "files.eol": "\n",
+
+  // --- Language services ---------------------------------------------------
+  // Point the C# tooling at the solution explicitly. With two `src/` trees in the
+  // repository, auto-detection sometimes picks nothing and reports no errors at all,
+  // which is indistinguishable from a clean build.
+  "dotnet.defaultSolution": "src/backend/AjBoilerplate.slnx",
+
+  // ESLint runs from the Nx workspace root, where the flat config and the plugins live.
+  // Without this, the extension resolves the config from the repository root and reports
+  // "no ESLint configuration found" on every TypeScript file.
+  "eslint.workingDirectories": ["src/frontend"],
+  "eslint.useFlatConfig": true,
+
+  // Use the workspace's own TypeScript, not the one bundled with VS Code, so the editor
+  // and `nx build` agree about what compiles.
+  "typescript.tsdk": "src/frontend/node_modules/typescript/lib",
+
+  // --- Search and file watching -------------------------------------------
+  // Build output and dependencies are not source. Excluding them keeps search results
+  // meaningful and keeps the file watcher off tens of thousands of files.
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/bin": true,
+    "**/obj": true,
+    "**/dist": true,
+    "**/coverage": true,
+    "**/TestResults": true,
+    "**/.nx": true,
+    "**/.angular": true,
+    "**/package-lock.json": true,
+    "**/playwright-report": true,
+    "**/test-results": true
+  },
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/bin/**": true,
+    "**/obj/**": true,
+    "**/dist/**": true,
+    "**/.nx/**": true,
+    "**/.angular/**": true
+  },
+
+  // `bin` and `obj` are .NET build output and are already in `.gitignore`. Note that
+  // `files.exclude` hides them from Quick Open and search as well as from the explorer,
+  // which is the intent — but it is why the list is only these two. Do not add source
+  // directories here: a file you cannot Quick Open is a file you will assume is missing.
+  "files.exclude": {
+    "**/bin": true,
+    "**/obj": true
+  },
+
+  // --- File associations ---------------------------------------------------
+  "files.associations": {
+    "*.slnx": "xml",
+    "*.props": "xml",
+    "*.targets": "xml",
+    // `ini` rather than `dotenv`: `ini` is built in, so this needs no extension to work.
+    ".env.example": "ini"
+  },
+
+  // --- YAML schemas --------------------------------------------------------
+  // Validates the files most likely to be wrong in a way that only CI would notice.
+  "yaml.schemas": {
+    "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.yml",
+    "https://json.schemastore.org/dependabot-2.0.json": ".github/dependabot.yml",
+    "https://json.schemastore.org/github-issue-forms.json": ".github/ISSUE_TEMPLATE/*.yml"
+  }
+}

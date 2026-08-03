@@ -1,0 +1,267 @@
+# Git attributes — line endings, diff behaviour, and what counts as binary.
+#
+# WHY THIS FILE EXISTS AND WHY IT IS NOT OPTIONAL
+#
+# Without it, Git's line-ending behaviour is decided by each developer's local
+# `core.autocrlf`, which is `true` by default on Windows. That default rewrites every
+# checked-out text file to CRLF, and two gates in this repository break the moment it does:
+#
+#   1. `dotnet format --verify-no-changes` (Backend CI, gate 2) enforces `.editorconfig`,
+#      which sets `end_of_line = lf`. A CRLF working tree fails that gate on files nobody
+#      touched, and the failure reads as "your formatting is wrong" rather than "your clone
+#      is wrong", which is the worst kind of CI failure.
+#
+#   2. `.claude/hooks/*.sh` are committed executable scripts with a `#!/usr/bin/env bash`
+#      shebang. A CRLF shebang line makes the kernel look for an interpreter literally named
+#      "bash\r", and the script dies with `bad interpreter: No such file or directory`. On
+#      WSL, Git Bash, and any Linux container that mounts a Windows clone, that takes the
+#      entire agentic harness — every guardrail in it — offline silently.
+#
+# The rules below are normalisation rules: they tell Git what to store in the repository
+# (always LF for text) and what to check out. They are authoritative regardless of anyone's
+# `core.autocrlf` setting, which is exactly the point.
+#
+# AFTER CHANGING THIS FILE, renormalise an existing clone once:
+#   git add --renormalize .
+#   git status          # review, then commit the line-ending-only changes on their own
+#
+# The rules here deliberately mirror `.editorconfig`. If you change one, change the other:
+# `.editorconfig` governs what editors write, `.gitattributes` governs what Git stores.
+
+# ---------------------------------------------------------------------------
+# Default: detect text, and normalise every text file to LF in the repository
+# and in the working tree.
+#
+# `text=auto` lets Git decide text vs binary by content, so an unlisted binary
+# format is still safe. `eol=lf` then forces LF on checkout too — not just in
+# the object store — which is what keeps a Windows working tree passing
+# `dotnet format` and keeps shebangs executable.
+# ---------------------------------------------------------------------------
+* text=auto eol=lf
+
+# ---------------------------------------------------------------------------
+# Shell scripts — LF, unconditionally. See reason 2 above.
+#
+# The explicit paths after the glob are redundant today and deliberate anyway:
+# they are the files where a CRLF regression is not a cosmetic annoyance but a
+# silent loss of every hook, so they are named rather than left to a pattern.
+# ---------------------------------------------------------------------------
+*.sh              text eol=lf
+*.bash            text eol=lf
+*.zsh             text eol=lf
+.claude/hooks/*   text eol=lf
+src/frontend/docker/*.sh text eol=lf
+
+# Files with no extension that are still shell scripts.
+*.envrc           text eol=lf
+
+# ---------------------------------------------------------------------------
+# Windows-only scripts — CRLF, deliberately.
+#
+# `cmd.exe` and PowerShell tolerate LF for the most part, but a `.bat` with LF
+# endings has genuine, documented failure modes (multi-line `for` blocks and
+# trailing `goto :eof`), and `.editorconfig` already declares CRLF for these
+# three. This is the one place LF is wrong.
+# ---------------------------------------------------------------------------
+*.bat             text eol=crlf
+*.cmd             text eol=crlf
+*.ps1             text eol=crlf
+*.psm1            text eol=crlf
+
+# ---------------------------------------------------------------------------
+# .NET — text, with language-aware diff hunk headers.
+#
+# `diff=csharp` makes `git diff` label each hunk with the enclosing member
+# rather than with whatever brace happened to be nearby.
+# ---------------------------------------------------------------------------
+*.cs              text eol=lf diff=csharp
+*.csx             text eol=lf diff=csharp
+*.csproj          text eol=lf
+*.props           text eol=lf
+*.targets         text eol=lf
+*.slnx            text eol=lf
+*.sln             text eol=lf
+*.runsettings     text eol=lf
+*.ruleset         text eol=lf
+*.resx            text eol=lf
+
+# EF Core migrations are generated, but they MUST be reviewed and they are
+# source-controlled deliberately (see `.gitignore`'s explicit negation). The
+# migration bodies are NOT marked generated below: a collapsed diff on a
+# migration is precisely the diff you needed to read.
+
+# ---------------------------------------------------------------------------
+# TypeScript / JavaScript / web assets
+# ---------------------------------------------------------------------------
+*.ts              text eol=lf
+*.mts             text eol=lf
+*.cts             text eol=lf
+*.tsx             text eol=lf
+*.js              text eol=lf
+*.mjs             text eol=lf
+*.cjs             text eol=lf
+*.jsx             text eol=lf
+*.html            text eol=lf diff=html
+*.htm             text eol=lf diff=html
+*.css             text eol=lf diff=css
+*.scss            text eol=lf diff=css
+*.less            text eol=lf diff=css
+*.vue             text eol=lf
+*.svg             text eol=lf
+*.map             text eol=lf
+
+# ---------------------------------------------------------------------------
+# Data, configuration, and documentation
+# ---------------------------------------------------------------------------
+*.json            text eol=lf
+*.jsonc           text eol=lf
+*.json5           text eol=lf
+*.yml             text eol=lf
+*.yaml            text eol=lf
+*.toml            text eol=lf
+*.xml             text eol=lf
+*.csv             text eol=lf
+*.sql             text eol=lf
+*.md              text eol=lf diff=markdown
+*.markdown        text eol=lf diff=markdown
+*.txt             text eol=lf
+*.http            text eol=lf
+
+# ---------------------------------------------------------------------------
+# Infrastructure as code and containers
+# ---------------------------------------------------------------------------
+*.tf              text eol=lf
+*.tfvars          text eol=lf
+*.hcl             text eol=lf
+*.bicep           text eol=lf
+*.bicepparam      text eol=lf
+Dockerfile        text eol=lf
+Dockerfile.*      text eol=lf
+*.dockerfile      text eol=lf
+docker-compose*.yml text eol=lf
+*.conf            text eol=lf
+nginx.conf        text eol=lf
+
+# ---------------------------------------------------------------------------
+# Dotfiles that carry no extension. `text=auto` already covers them, but they
+# are the files most likely to be hand-edited on Windows, so they are explicit.
+# ---------------------------------------------------------------------------
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.editorconfig     text eol=lf
+.dockerignore     text eol=lf
+.prettierrc       text eol=lf
+.prettierignore   text eol=lf
+.npmrc            text eol=lf
+.nvmrc            text eol=lf
+.env.example      text eol=lf
+CODEOWNERS        text eol=lf
+
+# ---------------------------------------------------------------------------
+# Binary — never normalise, never diff as text.
+#
+# `binary` is a built-in macro for `-text -diff -merge`. Anything here that
+# Git's content detection would have caught anyway is listed because being
+# explicit costs nothing and a corrupted binary from a bad normalisation is
+# expensive.
+#
+# `git check-attr -a` will still report `eol: lf` on these paths, inherited from
+# the `*` line at the top. That is reporting, not behaviour: end-of-line
+# conversion is skipped entirely once `text` is unset, so `eol` is never
+# consulted for a binary. Do not "fix" it.
+# ---------------------------------------------------------------------------
+*.png             binary
+*.jpg             binary
+*.jpeg            binary
+*.gif             binary
+*.ico             binary
+*.webp            binary
+*.avif            binary
+*.bmp             binary
+*.tif             binary
+*.tiff            binary
+*.psd             binary
+
+*.woff            binary
+*.woff2           binary
+*.ttf             binary
+*.otf             binary
+*.eot             binary
+
+*.pdf             binary
+*.zip             binary
+*.gz              binary
+*.tgz             binary
+*.bz2             binary
+*.xz              binary
+*.7z              binary
+*.rar             binary
+*.tar             binary
+
+*.dll             binary
+*.exe             binary
+*.pdb             binary
+*.so              binary
+*.dylib           binary
+*.nupkg           binary
+*.snupkg          binary
+*.snk             binary
+*.mp4             binary
+*.webm            binary
+*.mp3             binary
+*.wav             binary
+
+# Key and certificate material must never be normalised. It should never be
+# committed either — `.gitignore` blocks it and `.claude/hooks/secret-scan.sh`
+# blocks it again — but a normalised private key is a uniquely bad failure, so
+# the third layer is cheap.
+*.pfx             binary
+*.p12             binary
+*.pem             binary
+*.der             binary
+*.cer             binary
+*.crt             binary
+*.key             binary
+
+# SQLite / LocalDB artefacts, and the Nx daemon database.
+*.db              binary
+*.db-shm          binary
+*.db-wal          binary
+*.mdf             binary
+*.ldf             binary
+
+# ---------------------------------------------------------------------------
+# Generated files.
+#
+# `linguist-generated=true` collapses these in GitHub diffs and excludes them
+# from the repository's language statistics. It does NOT stop them being
+# reviewed when they matter — it stops a 20,000-line lockfile burying the four
+# lines of real change in the same pull request.
+#
+# NOTE ON MERGING LOCKFILES: never resolve a `package-lock.json` conflict by
+# hand and never set a merge driver for it. Take either side, then re-run
+# `npm install` and commit the regenerated file. A hand-merged lockfile
+# describes a dependency graph that npm never resolved and nobody has run.
+# ---------------------------------------------------------------------------
+package-lock.json       linguist-generated=true
+npm-shrinkwrap.json     linguist-generated=true
+yarn.lock               linguist-generated=true
+pnpm-lock.yaml          linguist-generated=true
+*.Designer.cs           linguist-generated=true
+**/Migrations/*ModelSnapshot.cs linguist-generated=true
+
+# Generated OpenAPI types. Source-controlled on purpose (the frontend must build
+# without a running API) but regenerated, never hand-edited — see ADR-0004.
+src/frontend/libs/data-access/api-types/src/lib/types.ts linguist-generated=true
+
+# ---------------------------------------------------------------------------
+# Repository language statistics. Cosmetic, but a boilerplate whose GitHub
+# language bar reads "HTML 61%" because of a checked-in report tells the reader
+# something false about what it is.
+#
+# No `linguist-language` override on `infra/`: Linguist already identifies `.tf`
+# as HCL and `.bicep` as Bicep, and forcing one language across a directory that
+# holds both would be a lie about half of it.
+# ---------------------------------------------------------------------------
+docs/**           linguist-documentation
+*.md              linguist-documentation

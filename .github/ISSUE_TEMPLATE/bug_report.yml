@@ -1,0 +1,170 @@
+# Bug report — GitHub issue form.
+#
+# Fields are marked `required: true` only where a missing answer makes the report
+# unactionable. Every required field is one more chance for a reporter to give up
+# halfway, so the list is short on purpose: without a reproduction, a version, and
+# an expected-versus-actual, there is nothing to investigate and the first reply
+# is a request for exactly those three things.
+#
+# Everything else is optional and asked for anyway, because people answer optional
+# questions far more often than maintainers expect.
+
+name: Bug report
+description: Something in the boilerplate does not behave as documented or as intended.
+title: '[bug]: '
+labels: ['bug', 'triage']
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to write this up.
+
+        **Not a bug — a security vulnerability?** Stop here and report it privately
+        through the Security tab instead. See `SECURITY.md`. A public issue is a
+        public disclosure.
+
+        **Not sure whether it is a bug?** If the behaviour is documented somewhere
+        and you disagree with it, that is a feature request. If it contradicts what
+        the docs say, that is a bug — or a documentation bug, which is still a bug.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: >-
+        What is wrong, in two or three sentences. Write it as though the reader has
+        never seen this repository.
+      placeholder: >-
+        The architecture test suite passes even when Domain references Infrastructure,
+        because the rule matches on the assembly name rather than the namespace.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stack
+    attributes:
+      label: Which part of the stack
+      description: >-
+        Pick the one the defect is IN, not the one where you noticed it. If the
+        frontend shows a wrong value that the API returned wrong, that is backend.
+      options:
+        - Backend (.NET, EF Core, API)
+        - Frontend (Angular, Nx, PrimeNG)
+        - Infrastructure (Terraform, Bicep, Docker)
+        - CI / GitHub Actions workflows
+        - The .claude harness (hooks, commands, agents, standards)
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      description: >-
+        The tag you cloned, or the commit you are on. `git rev-parse --short HEAD`
+        gives you the SHA. "Latest" is not an answer — main moves, and by the time
+        anyone reads this it will have moved again.
+      placeholder: v1.4.0, or 3f9a2c1
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        Fill in what is relevant. Version-skew bugs are common and are almost
+        impossible to identify without this, so err towards including a line you
+        think does not matter.
+      value: |
+        - OS:
+        - .NET SDK (`dotnet --version`):
+        - Node (`node --version`):
+        - Docker (`docker --version`):
+        - Database (SQL Server edition, containerised or hosted):
+        - Anything non-default about your setup:
+    validations:
+      required: false
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: >-
+        Numbered, from a fresh clone where possible. The single most useful thing you
+        can put here is the exact command you ran.
+
+        If it only reproduces against your own diverged copy, say so and say what you
+        changed — that is still worth reporting, it is just a different investigation.
+      value: |
+        1. Clone at <SHA> and run `...`
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: >-
+        What you expected, and where you got that expectation from — a doc, an ADR,
+        a comment, or reasoning. "Where from" matters: if the expectation came from
+        the docs and the code disagrees, one of the two is wrong and knowing which
+        changes the fix entirely.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead. Be specific about the failure mode.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs, stack traces, or CI output
+      description: >-
+        Paste the text, not a screenshot of the text — text is searchable and a
+        screenshot is not.
+
+        **Check what you paste for credentials before submitting.** Connection
+        strings, tokens, and full URLs with query parameters are the usual
+        offenders. This box is public the moment you press the button.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround, if you found one
+      description: >-
+        Optional, and disproportionately useful. It unblocks the next person to hit
+        this before the fix ships, and it often points straight at the cause.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            I searched existing issues, open and closed, and this is not already
+            reported.
+          required: true
+        - label: >-
+            This is not a security vulnerability. I understand that vulnerabilities go
+            through the Security tab privately, not here.
+          required: true
+        - label: >-
+            I have checked the pasted logs and reproduction steps for credentials,
+            internal hostnames, and other things I would rather not publish.
+          required: true

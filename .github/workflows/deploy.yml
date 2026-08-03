@@ -15,10 +15,20 @@ name: Deploy
 # Cloud authentication is GitHub OIDC. There are no long-lived cloud credentials in this
 # workflow, and none may ever be added. See .github/workflows/deploy-environment.yml.
 #
+# DATABASE MIGRATIONS RUN FIRST, in every environment, before anything is rolled out. The
+# reusable workflow's `migrate` job applies a migration bundle built by Backend CI from
+# this exact commit, and the rollout will not start unless it succeeds. The
+# expand → migrate → contract rule that makes this safe is documented in full at the top
+# of .github/workflows/deploy-environment.yml — read it before writing a migration that
+# drops or renames anything.
+#
 # Required repository variables:
 #   CLOUD_PROVIDER, and then either
 #   GCP_PROJECT_ID · GCP_REGION · TF_STATE_BUCKET
 #   AZURE_LOCATION · AZURE_NAME_PREFIX
+# For migrations, additionally:
+#   gcp   — CLOUDSQL_INSTANCE_CONNECTION_NAME · DB_NAME · DB_USER · DB_PASSWORD_SECRET
+#   azure — AZURE_SQL_SERVER · AZURE_SQL_DATABASE · AZURE_RESOURCE_GROUP
 # Required repository secrets:
 #   GCP_WORKLOAD_IDENTITY_PROVIDER · GCP_SERVICE_ACCOUNT
 #   AZURE_CLIENT_ID · AZURE_TENANT_ID · AZURE_SUBSCRIPTION_ID
@@ -29,12 +39,23 @@ on:
     branches: [main]
     paths:
       - 'infra/**'
+      # The application image and the schema move together, so a backend change is a
+      # deployment trigger. Without this path the `migrate` job only ever ran when the
+      # infrastructure happened to change, which is not when migrations are written.
+      - 'src/backend/**'
       - '.github/workflows/deploy.yml'
       - '.github/workflows/deploy-environment.yml'
   workflow_dispatch:
     inputs:
       apply:
         description: 'Apply the change. Unchecked runs plan / what-if only.'
+        required: false
+        default: true
+        type: boolean
+      run_migrations:
+        description: >-
+          Apply EF Core migrations before each rollout. Leave checked. Uncheck only for
+          the FIRST deployment of an environment, where the database does not exist yet.
         required: false
         default: true
         type: boolean
@@ -56,10 +77,12 @@ jobs:
       environment: dev
       cloud_provider: ${{ vars.CLOUD_PROVIDER }}
       apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+      run_migrations: ${{ github.event_name != 'workflow_dispatch' || inputs.run_migrations }}
     secrets: inherit
     permissions:
       contents: read
       id-token: write
+      actions: read
 
   staging:
     name: staging
@@ -69,10 +92,12 @@ jobs:
       environment: staging
       cloud_provider: ${{ vars.CLOUD_PROVIDER }}
       apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+      run_migrations: ${{ github.event_name != 'workflow_dispatch' || inputs.run_migrations }}
     secrets: inherit
     permissions:
       contents: read
       id-token: write
+      actions: read
 
   prod:
     name: prod
@@ -82,7 +107,9 @@ jobs:
       environment: prod
       cloud_provider: ${{ vars.CLOUD_PROVIDER }}
       apply: ${{ github.event_name != 'workflow_dispatch' || inputs.apply }}
+      run_migrations: ${{ github.event_name != 'workflow_dispatch' || inputs.run_migrations }}
     secrets: inherit
     permissions:
       contents: read
       id-token: write
+      actions: read

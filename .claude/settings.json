@@ -22,6 +22,11 @@
           },
           {
             "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/commit-msg.sh",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/sonar-pre-push.sh",
             "timeout": 300
           }

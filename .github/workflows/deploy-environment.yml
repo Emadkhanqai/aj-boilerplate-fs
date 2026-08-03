@@ -6,6 +6,60 @@ name: Deploy environment (reusable)
 # short-lived workflow token for a short-lived cloud credential. There is no long-lived
 # key, no service-account JSON, and no client secret anywhere in this repository — and
 # none may ever be added.
+#
+# =============================================================================
+# ORDER: MIGRATE, THEN ROLL OUT. NEVER THE OTHER WAY ROUND.
+#
+# The `migrate` job below runs BEFORE the `gcp` / `azure` jobs, and those jobs will not
+# start until it has succeeded. That ordering is the whole design, and it is why the
+# expand → migrate → contract rule exists.
+#
+# THE PROBLEM. During any rollout there is a window — seconds on Cloud Run, minutes on a
+# bad day — when the old application version and the new one are both serving traffic
+# against ONE database. Whatever the schema looks like in that window, both versions have
+# to be able to read and write it. A migration that renames a column breaks the old
+# version the instant it applies; a migration that runs after the rollout breaks the new
+# version until it does. There is no ordering that makes a destructive change safe. The
+# only fix is to stop making destructive changes in a single release.
+#
+# THE RULE. Any schema change that would break the previously deployed version is split
+# across at least two releases:
+#
+#   EXPAND    (release N)   Add the new thing. Additive only, and backwards compatible by
+#                           construction: a new nullable column, a new table, a new index,
+#                           a new column with a default. The old version does not know it
+#                           exists and does not care. This is what `migrate` applies here.
+#
+#   MIGRATE   (release N)   The new application version writes to BOTH shapes and reads
+#                           the new one, falling back to the old. Backfill existing rows
+#                           in the same release or in a background job. Both versions work
+#                           against this schema, which is what makes the rollout window
+#                           safe.
+#
+#   CONTRACT  (release N+1, or later) Once every instance of the old version is gone AND
+#                           you are confident you will not roll back to it, drop the old
+#                           column, the old table, the old index. This is the only
+#                           destructive step and it is a release of its own.
+#
+# CONCRETELY, WHAT MAY BE IN A MIGRATION APPLIED BY THIS JOB:
+#   Allowed  — CREATE TABLE, ADD COLUMN (nullable, or NOT NULL with a default), CREATE
+#              INDEX, ADD CONSTRAINT that existing data already satisfies, backfill UPDATE.
+#   Forbidden— DROP COLUMN, DROP TABLE, RENAME anything, narrowing a type, adding a NOT
+#              NULL column with no default, adding a UNIQUE constraint the current data
+#              might violate. Every one of those breaks the running version.
+#
+# A RENAME IS NEVER A RENAME. It is: add the new column (release N), write both and read
+# new (release N), backfill (release N), drop the old (release N+1). Four steps, two
+# releases. `dotnet ef migrations add` will happily generate `RenameColumn` — that is the
+# moment to stop and split it.
+#
+# ROLLBACK. This job rolls the schema FORWARD only. There is no `--rollback` here on
+# purpose: `dotnet ef database update <previous>` runs the `Down` methods, and a `Down`
+# that drops a column destroys data that the previous version could not have written. If
+# expand → contract is being followed, a rollback needs no schema change at all, because
+# the previous application version still works against the expanded schema. That is the
+# main practical benefit of the rule, and it is worth the extra release.
+# =============================================================================
 
 on:
   workflow_call:
@@ -23,18 +77,276 @@ on:
         required: false
         default: true
         type: boolean
+      run_migrations:
+        description: >-
+          Apply EF Core migrations before the rollout. Leave true. Set false only for the
+          FIRST deployment of an environment, where the database does not exist yet and
+          there is nothing to migrate — then set it back.
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
   id-token: write
+  # Needed to locate and download the migration bundle produced by the Backend CI run for
+  # this same commit. Read-only.
+  actions: read
 
 jobs:
+  # ==========================================================================
+  # MIGRATE — applies EF Core migrations before anything is rolled out.
+  #
+  # ------------------------------------------------------------------------
+  # WHAT IT DEPLOYS, AND WHY IT IS NOT `dotnet ef database update`
+  #
+  # It runs a MIGRATION BUNDLE: a single self-contained executable produced by
+  # `dotnet ef migrations bundle`, containing the migrations and the runtime needed to
+  # apply them. Nothing else. That matters more than it sounds:
+  #
+  #   · No SDK on the deployment path. `dotnet ef database update` needs the .NET SDK, the
+  #     full source tree, and a successful build inside the deployment job — three things
+  #     that can fail for reasons unrelated to the schema, at the worst moment.
+  #   · The artefact is built ONCE, in CI, from the reviewed commit, and the same bytes are
+  #     applied to dev, then staging, then prod. `database update` rebuilds each time and
+  #     could, in principle, apply something different.
+  #   · It is idempotent. Re-running it after a partial failure applies only what is
+  #     outstanding.
+  #
+  # ------------------------------------------------------------------------
+  # DEPENDENCY ON BACKEND CI — READ THIS IF THE JOB FAILS AT THE DOWNLOAD STEP
+  #
+  # This job consumes an artefact it does not produce. The contract is:
+  #
+  #     workflow : .github/workflows/backend-ci.yml   (job: integration-tests)
+  #     artifact : migration-bundle
+  #     contents : migrate        — self-contained linux-x64 executable
+  #                migrations.sql — the idempotent script, for DBA review
+  #
+  # The artefact must exist on a SUCCESSFUL Backend CI run for the exact commit being
+  # deployed. If Backend CI stops publishing it, this job fails with an explicit message
+  # rather than deploying an application against a schema that was never applied. A silent
+  # skip here is how a release goes out against last week's schema.
+  #
+  # The executable is named `migrate`, not `efbundle`. `dotnet ef migrations bundle`
+  # defaults to `efbundle`; backend-ci.yml overrides it with `--output`. If you change the
+  # name on one side, change it here too — the check below is what turns that mismatch into
+  # a clear failure instead of a deployment that skipped its migrations.
+  # ==========================================================================
+  migrate:
+    name: Migrate (${{ inputs.environment }})
+    if: inputs.apply && inputs.run_migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Same protection rules as the rollout. A schema change reaching production without
+    # the approval that gates the code is the wrong way round: the migration is the part
+    # you cannot roll back.
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cross-workflow artefact download. `gh` rather than a third-party action: one fewer
+      # dependency in the path that touches the production database.
+      - name: Locate the Backend CI run for this commit
+        id: ci-run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          run_id="$(gh run list \
+            --workflow backend-ci.yml \
+            --commit "$SHA" \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty')"
+
+          if [ -z "$run_id" ]; then
+            echo "::error::No successful Backend CI run found for commit $SHA."
+            echo "The migration bundle is produced by that run. Deploying without it would"
+            echo "roll out an application version against a schema that was never applied."
+            echo "Re-run Backend CI for this commit, then re-run this deployment."
+            exit 1
+          fi
+          echo "run-id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "Backend CI run: $run_id"
+
+      - name: Download the migration bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! gh run download "${{ steps.ci-run.outputs.run-id }}" \
+                 --name migration-bundle --dir ./migration-bundle; then
+            echo "::error::Backend CI run ${{ steps.ci-run.outputs.run-id }} has no"
+            echo "'migration-bundle' artifact. See the contract documented above this job."
+            exit 1
+          fi
+
+          if [ ! -f ./migration-bundle/migrate ]; then
+            echo "::error::The artifact does not contain the 'migrate' executable."
+            echo "Check the --output argument of the bundle step in backend-ci.yml."
+            ls -la ./migration-bundle
+            exit 1
+          fi
+          chmod +x ./migration-bundle/migrate
+
+          # The idempotent script is not applied — it is the reviewable record of what the
+          # bundle is about to do, printed into the job log so the approval that gated this
+          # environment has something to have been about.
+          if [ -f ./migration-bundle/migrations.sql ]; then
+            echo "::group::Pending migration script (review)"
+            cat ./migration-bundle/migrations.sql
+            echo "::endgroup::"
+          fi
+
+      # ----------------------------------------------------------------------
+      # GCP: reach Cloud SQL through the Auth Proxy. The instance has no public IP in the
+      # shipped Terraform, and it should not gain one for a deployment job — the proxy
+      # tunnels over the Cloud SQL Admin API using the same OIDC identity, so nothing is
+      # exposed to the internet and no firewall rule is opened and forgotten.
+      # ----------------------------------------------------------------------
+      - name: Authenticate to Google Cloud (OIDC, no stored key)
+        if: inputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+        if: inputs.cloud_provider == 'gcp'
+
+      - name: Apply migrations (GCP / Cloud SQL)
+        if: inputs.cloud_provider == 'gcp'
+        shell: bash
+        env:
+          INSTANCE: ${{ vars.CLOUDSQL_INSTANCE_CONNECTION_NAME }}
+          DB_NAME: ${{ vars.DB_NAME }}
+          DB_USER: ${{ vars.DB_USER }}
+          DB_PASSWORD_SECRET: ${{ vars.DB_PASSWORD_SECRET }}
+        run: |
+          set -euo pipefail
+
+          for v in INSTANCE DB_NAME DB_USER DB_PASSWORD_SECRET; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Repository variable $v is not set."
+              echo "Migrations cannot be applied. See README.md for the full variable list."
+              exit 1
+            fi
+          done
+
+          # The Auth Proxy binary, pinned. Downloading an unpinned 'latest' onto the path
+          # that writes to the production database is not a saving worth making.
+          curl -fsSL -o cloud-sql-proxy \
+            "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.14.1/cloud-sql-proxy.linux.amd64"
+          chmod +x cloud-sql-proxy
+
+          ./cloud-sql-proxy --port 1433 "$INSTANCE" &
+          proxy_pid=$!
+          trap 'kill "$proxy_pid" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            (echo > /dev/tcp/127.0.0.1/1433) >/dev/null 2>&1 && break
+            sleep 1
+          done
+
+          # The password is generated by Terraform straight into Secret Manager and never
+          # passes through a workflow file. It is read here into a shell variable, used
+          # once, and never echoed — `set -x` must not be enabled in this step.
+          db_password="$(gcloud secrets versions access latest --secret="$DB_PASSWORD_SECRET")"
+
+          ./migration-bundle/migrate \
+            --connection "Server=127.0.0.1,1433;Database=${DB_NAME};User Id=${DB_USER};Password=${db_password};TrustServerCertificate=True;IPAddressPreference=IPv4First;"
+
+          echo "Migrations applied to ${DB_NAME}."
+
+      # ----------------------------------------------------------------------
+      # Azure: the shipped Bicep configures Entra-only authentication on Azure SQL, so
+      # there is no database password anywhere — the bundle authenticates as the same
+      # federated identity that ran `azure/login`.
+      # ----------------------------------------------------------------------
+      - name: Authenticate to Azure (OIDC federated credential, no client secret)
+        if: inputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Apply migrations (Azure SQL)
+        if: inputs.cloud_provider == 'azure'
+        shell: bash
+        env:
+          SQL_SERVER: ${{ vars.AZURE_SQL_SERVER }}
+          SQL_DATABASE: ${{ vars.AZURE_SQL_DATABASE }}
+          RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: |
+          set -euo pipefail
+
+          for v in SQL_SERVER SQL_DATABASE RESOURCE_GROUP; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Repository variable $v is not set."
+              echo "Migrations cannot be applied. See README.md for the full variable list."
+              exit 1
+            fi
+          done
+
+          # A GitHub-hosted runner has no stable egress address, so a temporary,
+          # narrowly-scoped firewall rule is opened for this runner's IP alone and removed
+          # in every exit path, including failure. A permanent rule for "the CI range" is
+          # not a thing that exists.
+          runner_ip="$(curl -fsSL https://api.ipify.org)"
+          rule_name="gh-migrate-${{ github.run_id }}"
+
+          cleanup() {
+            az sql server firewall-rule delete \
+              --resource-group "$RESOURCE_GROUP" \
+              --server "${SQL_SERVER%%.*}" \
+              --name "$rule_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          az sql server firewall-rule create \
+            --resource-group "$RESOURCE_GROUP" \
+            --server "${SQL_SERVER%%.*}" \
+            --name "$rule_name" \
+            --start-ip-address "$runner_ip" \
+            --end-ip-address "$runner_ip" >/dev/null
+
+          # `Active Directory Default` picks up the federated credential that `azure/login`
+          # placed in the environment. No password exists to leak.
+          ./migration-bundle/migrate \
+            --connection "Server=tcp:${SQL_SERVER},1433;Database=${SQL_DATABASE};Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+
+          echo "Migrations applied to ${SQL_DATABASE}."
+
+      - name: Upload the applied migration script
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migrations-applied-${{ inputs.environment }}
+          path: migration-bundle/migrations.sql
+          retention-days: 90
+          if-no-files-found: warn
+
   # --------------------------------------------------------------------------
   # Google Cloud — Terraform
   # --------------------------------------------------------------------------
   gcp:
     name: GCP (${{ inputs.environment }})
-    if: inputs.cloud_provider == 'gcp'
+    # `needs: migrate` is what enforces migrate-then-roll-out. The condition has to spell
+    # out `skipped` as an acceptable result: `migrate` does not run on a plan-only
+    # invocation or a first deployment, and a skipped dependency would otherwise skip this
+    # job silently — a deployment workflow that reports success having deployed nothing.
+    # `failure` is deliberately NOT accepted: if the schema did not apply, do not roll out.
+    needs: migrate
+    if: >-
+      inputs.cloud_provider == 'gcp'
+      && !cancelled()
+      && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     # The environment's protection rules provide the approval gate. Configure required
@@ -101,7 +413,13 @@ jobs:
   # --------------------------------------------------------------------------
   azure:
     name: Azure (${{ inputs.environment }})
-    if: inputs.cloud_provider == 'azure'
+    # See the note on the `gcp` job: same ordering, same reason for accepting `skipped`
+    # and refusing `failure`.
+    needs: migrate
+    if: >-
+      inputs.cloud_provider == 'azure'
+      && !cancelled()
+      && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment: ${{ inputs.environment }}

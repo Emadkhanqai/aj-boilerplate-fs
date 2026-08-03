@@ -15,13 +15,27 @@ true even after the decision is reversed, because it describes a moment.
 | [0005](0005-apiresponse-envelope-and-status-code-contract.md) | Uniform `ApiResponse<T>` envelope and status-code contract | Accepted |
 | [0006](0006-three-repository-split.md) | Publish as three repositories derived from one tree | Accepted |
 | [0007](0007-bespoke-whats-new-modal.md) | The "What's new" modal is bespoke markup, a bounded exception to PrimeNG-only | Accepted |
+| [0008](0008-no-audit-trail-or-soft-delete.md) | No audit trail and no soft delete — the ingredients ship, the policy does not | Accepted |
+| [0009](0009-idempotency-keys-for-unsafe-requests.md) | `Idempotency-Key` is opt-in, POST-only, and replays a buffered response from a unique-indexed table | Accepted |
+| [0010](0010-partial-rtl-without-an-i18n-library.md) | Direction switching without an i18n library — partial RTL, deliberately | Accepted |
+| [0011](0011-scripted-one-way-derivation-for-the-three-repositories.md) | Derivation of the single-stack repositories is a committed one-way script | Accepted |
 
-These seven record the decisions taken when this boilerplate was built. Keep them as history and
-start your own series at `0008`, or delete them and start at `0001` — but pick one and be
-consistent.
+These eleven record the decisions taken when this boilerplate was built. Keep them as history and
+start your own series at the next free number, or delete them and start at `0001` — but pick one
+and be consistent.
 
-`0007` bounds `0003` rather than superseding it — worth reading as a pair, since it is the one
-place the PrimeNG rule bends and it says exactly how far.
+**Numbers are never reused or renumbered.** Renumbering an ADR after the fact breaks every
+cross-reference that already points at it, and a gap in a sequence is cheaper than a number that
+means two different things in two repositories. If a number is claimed and the ADR is then
+abandoned, leave the gap and say so here.
+
+Three pairs are worth reading together:
+
+- **`0003` and `0007`** — `0007` bounds `0003` rather than superseding it. It is the one place the
+  PrimeNG rule bends, and it says exactly how far.
+- **`0006` and `0011`** — `0006` decided to publish three repositories and named the drift risk;
+  `0011` is the mechanism, written after the drift it predicted had already happened.
+- **`0001` and `0008`** — `0008` is what the layering in `0001` deliberately does *not* buy you.
 
 ## Writing one
 

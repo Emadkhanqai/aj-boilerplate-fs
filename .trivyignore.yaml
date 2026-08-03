@@ -1,0 +1,62 @@
+# Trivy allowlist — accepted findings, with a reason and an expiry date.
+#
+# Read by the blocking scan in .github/workflows/supply-chain.yml. It suppresses a finding
+# from the gate; it does NOT remove it from the SARIF report uploaded to Code scanning or
+# from the JSON artefact. An accepted risk stays visible, which is the difference between
+# an allowlist and a blindfold.
+#
+# ---------------------------------------------------------------------------
+# THE RULES, ENFORCED BY THE `allowlist-hygiene` JOB IN THAT WORKFLOW
+#
+#   1. EVERY entry has a `statement` — a sentence explaining why this finding is accepted
+#      here, written for a reader who was not in the room. "Not exploitable" on its own is
+#      not a statement; say why. Naming the code path that would have to be reachable, and
+#      is not, is a statement.
+#
+#   2. EVERY entry has an `expired_at` date. An exception with no end is a decision nobody
+#      revisits, and the CI job fails the build when an entry passes its date, so the
+#      conversation happens again on a schedule rather than never.
+#
+#   3. PREFER 30 DAYS. Choose the shortest date that is honestly long enough. If you find
+#      yourself renewing the same entry for the third time, the finding is not being
+#      accepted — it is being avoided, and it should either be fixed or recorded as an
+#      accepted risk somewhere more visible than a scanner config.
+#
+#   4. THIS IS NOT THE PLACE FOR A HIGH YOU HAVE NOT LOOKED AT. The blocking scan already
+#      ignores unfixed vulnerabilities, so anything that reaches this file has a published
+#      fix and could, in principle, be fixed by upgrading. That makes every entry here a
+#      deliberate decision not to upgrade yet, which is a legitimate thing to decide and a
+#      thing to write down.
+#
+# ---------------------------------------------------------------------------
+# THE FILE SHIPS EMPTY, AND THAT IS THE CORRECT STARTING STATE. A boilerplate with
+# pre-populated exceptions teaches its consumers that adding one is routine.
+#
+# Format reference: this is Trivy's YAML ignore file. The older plain-text `.trivyignore`
+# (one identifier per line) is NOT used here, because it has nowhere to put a reason or a
+# date, which are the two things that make an allowlist reviewable.
+# ---------------------------------------------------------------------------
+#
+# Example of a well-formed entry — copy the shape, not the content:
+#
+# vulnerabilities:
+#   - id: CVE-0000-00000
+#     # Optional: restrict the suppression to where you actually assessed it. Without
+#     # `paths`, the entry suppresses this identifier everywhere, including in a package
+#     # you have not looked at yet.
+#     paths:
+#       - 'usr/lib/example/libexample.so'
+#     statement: >-
+#       Reachable only through the XML external-entity path in libexample, which this
+#       service never calls: the only XML this image parses is the OpenAPI document it
+#       generates itself. Upgrading requires the 11.x base image, which is scheduled for
+#       the next release. Reassessed 2026-08-03 by <reviewer>.
+#     expired_at: 2026-09-03
+
+vulnerabilities: []
+
+misconfigurations: []
+
+secrets: []
+
+licenses: []

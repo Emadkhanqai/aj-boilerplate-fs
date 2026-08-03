@@ -1,0 +1,92 @@
+ALL RIGHTS RESERVED — LICENCE PENDING
+
+Copyright (c) 2026 <COPYRIGHT HOLDER — replace with the organisation that owns this work>
+All rights reserved.
+
+-------------------------------------------------------------------------------
+WHAT THIS FILE IS, AND WHAT IT IS NOT
+-------------------------------------------------------------------------------
+
+This is NOT an open-source licence. It is a statement of the position that already
+applies, written down so that nobody has to guess.
+
+A repository with no LICENSE file is not "free to use". Under the Berne Convention and
+the copyright law of every jurisdiction that implements it, an original work is
+protected from the moment it is fixed in a tangible form, with no registration, no
+notice, and no ceremony required. The default is that all rights are reserved and no
+licence is granted to anyone. Publishing the source on a public host does not change
+that; it makes the work readable, not reusable.
+
+So this file grants nothing that was not already granted, and removes nothing that was
+not already withheld. What it adds is clarity. In the absence of an explicit statement,
+a reader is left to infer intent from the fact of publication, and reasonable people
+infer wrongly in both directions — some assume public means permissive, others assume
+the omission is deliberate hostility. Neither is true here.
+
+-------------------------------------------------------------------------------
+THE POSITION
+-------------------------------------------------------------------------------
+
+1. All rights in this work are reserved by the copyright holder named above.
+
+2. No licence, express or implied, is granted to any person to use, copy, modify,
+   merge, publish, distribute, sublicense, or sell copies of this work, or to create
+   derivative works from it, except as separately agreed in writing with the copyright
+   holder.
+
+3. Viewing the source, cloning the repository, and the operations GitHub's own terms of
+   service permit for public repositories (viewing and forking within the platform) are
+   not affected by this notice, because they are governed by that agreement rather than
+   by this one.
+
+4. This work is provided "as is", without warranty of any kind, express or implied,
+   including but not limited to the warranties of merchantability, fitness for a
+   particular purpose, and non-infringement. In no event shall the copyright holder be
+   liable for any claim, damages, or other liability arising from, out of, or in
+   connection with this work or its use.
+
+-------------------------------------------------------------------------------
+WHY THE LICENCE IS NOT SET
+-------------------------------------------------------------------------------
+
+This code is derived from work produced in the course of employment. The copyright in
+it therefore does not belong to the individual contributors, and choosing a licence is
+not a decision an engineer, a maintainer, or an automated process is entitled to make on
+the owner's behalf. Committing an MIT or Apache-2.0 file here because it is the
+customary thing to do in a public repository would be an unauthorised grant of somebody
+else's property.
+
+The choice is pending. It requires a decision from whoever is responsible for the
+organisation's intellectual property — in practice, legal counsel or the equivalent
+delegated authority — and it should consider at least:
+
+  - whether third-party contributions are wanted, and under what contributor agreement;
+  - which permissive or copyleft terms are acceptable for a work that will be cloned
+    into other projects, which is this repository's entire purpose;
+  - patent grants, which differ materially between MIT and Apache-2.0;
+  - whether trademark and branding need separate treatment from the code;
+  - the licences of the dependencies this work already carries.
+
+-------------------------------------------------------------------------------
+WHAT TO DO WITH THIS FILE
+-------------------------------------------------------------------------------
+
+When the decision is made, REPLACE this file entirely with the chosen licence text,
+carrying the correct copyright line. Do not append the new licence beneath this notice
+and do not keep both: two licence statements in one file is the ambiguity this file
+exists to remove.
+
+At the same time, update:
+
+  - README.md            — the "Licence" section and the licence badge
+  - src/frontend/package.json — the `license` field
+  - CONTRIBUTING.md      — the note about which terms contributions are accepted under
+
+Until then, if you want to use any part of this work, ask. A written grant from the
+copyright holder is the only thing that changes the position stated above, and asking is
+usually quick.
+
+-------------------------------------------------------------------------------
+STATUS: All rights reserved. Licence decision pending.
+LAST REVIEWED: 2026-08-03
+-------------------------------------------------------------------------------

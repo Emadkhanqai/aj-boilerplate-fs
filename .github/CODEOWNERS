@@ -1,0 +1,138 @@
+# ============================================================================
+# CODEOWNERS
+# ============================================================================
+#
+# READ THIS BEFORE YOU TRUST A SINGLE LINE BELOW.
+#
+# 1. EVERY HANDLE IN THIS FILE IS A PLACEHOLDER.
+#
+#    `@<your-org>/backend` is not a team. It does not exist. Until you replace
+#    these with real teams or users that have WRITE access to this repository,
+#    this file is inert — it assigns nobody, requests nothing, and blocks
+#    nothing. It looks like governance and provides none.
+#
+# 2. GITHUB WILL NOT TELL YOU THAT.
+#
+#    A handle that does not exist, a team that is not in this repository's
+#    organisation, or a user without write access is silently ignored. No
+#    warning, no annotation, no failing check. The rule simply does nothing and
+#    the pull request opens with no reviewer requested. Verify your edits by
+#    opening a test pull request against each path and confirming the expected
+#    reviewer is actually requested.
+#
+# 3. THIS FILE IS ONLY AN ENFORCEMENT MECHANISM IF BRANCH PROTECTION SAYS SO.
+#
+#    On its own, CODEOWNERS requests reviews. It does not require them. To make
+#    it a gate, enable Settings -> Branches -> branch protection rule for `main`
+#    -> "Require a pull request before merging" -> "Require review from Code
+#    Owners". Without that, an owner can be requested and the pull request can
+#    still merge without them.
+#
+# 4. THE LAST MATCHING PATTERN WINS. THIS IS THE OPPOSITE OF .gitignore.
+#
+#    This is the single most common mistake with CODEOWNERS. In `.gitignore`,
+#    later patterns refine earlier ones and both participate. Here, only ONE
+#    pattern applies to any given file: the last one in this file that matches
+#    it. Nothing accumulates.
+#
+#    So a catch-all `*` placed at the BOTTOM overrides everything above it and
+#    makes the whole file pointless. The catch-all in this file is therefore
+#    FIRST, and every specific rule comes after it. Add new rules below the
+#    existing ones, from least specific to most specific, and keep the
+#    catch-all where it is.
+#
+# 5. SYNTAX NOTES THAT COST PEOPLE AN AFTERNOON.
+#
+#    - Paths are matched from the repository root when they start with `/`.
+#      Without a leading `/`, `docs/` matches a `docs/` directory at any depth.
+#      Prefer the leading slash: it means what it looks like it means.
+#    - A trailing `/` matches the directory and everything under it.
+#    - There is no negation. `!pattern` is not supported; there is no way to
+#      say "everyone except". Express exceptions as a later, more specific rule.
+#    - Comments must be on their own line. A trailing comment after a rule is
+#      parsed as part of the rule and breaks it.
+#
+# ============================================================================
+
+
+# ----------------------------------------------------------------------------
+# Catch-all. FIRST, deliberately — see note 4 above.
+#
+# Everything not claimed by a more specific rule below falls here. This should
+# be a group broad enough that nothing is ever orphaned, not the one person who
+# happens to know the most.
+# ----------------------------------------------------------------------------
+*                       @<your-org>/maintainers
+
+
+# ----------------------------------------------------------------------------
+# Backend — .NET 10, Clean Architecture, EF Core, MSSQL.
+#
+# Layer boundaries here are enforced by the architecture test suite, but a test
+# only proves the dependency direction. Whether a rule belongs in Domain or
+# Application is a judgement call, and it wants a reviewer who holds the whole
+# shape of the solution in their head.
+# ----------------------------------------------------------------------------
+/src/backend/           @<your-org>/backend
+
+
+# ----------------------------------------------------------------------------
+# Frontend — Angular, Nx, PrimeNG.
+# ----------------------------------------------------------------------------
+/src/frontend/          @<your-org>/frontend
+
+
+# ----------------------------------------------------------------------------
+# Infrastructure as code.
+#
+# Split by cloud because the reviewing skill is different. Terraform state
+# handling and Bicep deployment scoping fail in different ways, and a reviewer
+# fluent in one is not automatically useful on the other.
+#
+# Anything here is one `apply` away from being real, which is reason enough for
+# a named owner.
+# ----------------------------------------------------------------------------
+/infra/gcp/             @<your-org>/platform
+/infra/azure/           @<your-org>/platform
+
+
+# ----------------------------------------------------------------------------
+# CI, deployment, and the security metadata in this directory.
+#
+# Everything in `/.github/` changes the guardrails for EVERY contributor at
+# once. A workflow edit can disable a gate for the whole repository, and it
+# does it quietly — a removed job does not fail, it simply stops appearing.
+# Loosening a gate should cost a conversation with someone who knows why the
+# gate is there, which is exactly what a code owner is.
+#
+# This includes the file you are reading. A pull request that edits CODEOWNERS
+# is a pull request that edits who has to approve pull requests.
+# ----------------------------------------------------------------------------
+/.github/               @<your-org>/platform @<your-org>/maintainers
+
+
+# ----------------------------------------------------------------------------
+# The agentic harness.
+#
+# `/.claude/` is committed rather than gitignored on purpose, and it carries
+# the deterministic controls: hooks that refuse dangerous shell commands,
+# protect sensitive files, scan for secrets, and block a push on a red quality
+# gate — plus the permission policy and the standards every agent reads.
+#
+# Weakening a hook is indistinguishable from a routine edit in a diff, and its
+# effect is repository-wide and permanent until someone notices. That is the
+# whole argument for a dedicated owner. Treat a change here with the same
+# suspicion as a change to a CI gate, because it is the same kind of change.
+# ----------------------------------------------------------------------------
+/.claude/               @<your-org>/maintainers
+
+
+# ----------------------------------------------------------------------------
+# Architecture decision records.
+#
+# An ADR is a commitment that outlives the pull request that carried it, and an
+# accepted one is never edited to reflect a new decision — it is superseded by
+# a new record. See docs/adr/README.md. That convention only survives if
+# somebody who knows it reviews changes to this directory.
+# ----------------------------------------------------------------------------
+/docs/adr/              @<your-org>/maintainers

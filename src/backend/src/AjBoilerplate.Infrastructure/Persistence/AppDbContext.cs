@@ -1,4 +1,5 @@
 using AjBoilerplate.Domain.Features;
+using AjBoilerplate.Domain.Idempotency;
 using AjBoilerplate.Domain.Items;
 using AjBoilerplate.Domain.Messaging;
 using AjBoilerplate.Domain.Messaging.Inbox;
@@ -29,6 +30,10 @@ public sealed class AppDbContext : DbContext
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
+
+    /// <summary>Stored responses for unsafe requests carrying an <c>Idempotency-Key</c>, so a retried
+    /// create replays rather than writing twice.</summary>
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

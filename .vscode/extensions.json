@@ -1,0 +1,84 @@
+// Extension recommendations. VS Code offers these once, on first open, and lists them under
+// "Recommended" in the Extensions view. They are a suggestion, not a requirement — nothing in
+// this repository depends on an editor, and every gate runs from the command line and in CI.
+//
+// The list is deliberately short. A recommendation file with forty entries is one nobody reads,
+// and every extension is a process, a startup cost, and an update to keep track of. Everything
+// here either enforces a rule this repository already has (.editorconfig, .prettierrc, ESLint,
+// SonarQube) or makes an existing workflow visible in the editor (Nx targets, Playwright runs,
+// migrations, workflow YAML).
+//
+// JSONC: comments are legal in this file. VS Code parses it as JSON with comments.
+{
+  "recommendations": [
+    // --- Backend (.NET 10) ---------------------------------------------------
+    // C# Dev Kit brings the solution explorer, the test explorer, and project management.
+    // It depends on and installs `ms-dotnettools.csharp` (the language service) automatically;
+    // that one is listed anyway because the Dev Kit licence is not appropriate for every
+    // organisation, and the base C# extension is the part you actually cannot work without.
+    "ms-dotnettools.csdevkit",
+    "ms-dotnettools.csharp",
+
+    // --- Frontend (Angular 21 + Nx) -----------------------------------------
+    // Template type checking, completions inside `.html`, and go-to-definition across the
+    // component/template boundary. Angular's own extension, published by the Angular team.
+    "Angular.ng-template",
+    // Nx Console: runs and discovers Nx targets, and shows the project graph. Published by
+    // Nx; the extension id predates the rename and is still `nrwl.angular-console`.
+    "nrwl.angular-console",
+    // Runs the Vitest suites from the editor with the same config `nx test` uses.
+    "vitest.explorer",
+    // Runs and debugs the Playwright journeys in `apps/web-e2e`, including trace viewing.
+    "ms-playwright.playwright",
+
+    // --- Formatting and linting ---------------------------------------------
+    // Applies `.editorconfig` to every file type, including the ones no formatter owns.
+    // Without it, `.editorconfig` is enforced only by `dotnet format` in CI, which means you
+    // find out about a violation on a pull request rather than on save.
+    "EditorConfig.EditorConfig",
+    // ESLint, using the flat config in `src/frontend/eslint.config.mjs`.
+    "dbaeumer.vscode-eslint",
+    // Prettier, using `src/frontend/.prettierrc`. `.vscode/settings.json` sets
+    // `prettier.requireConfig`, so it formats only where a Prettier config actually applies
+    // and never invents a style for files outside the frontend.
+    "esbenp.prettier-vscode",
+
+    // --- Quality gate --------------------------------------------------------
+    // SonarQube for IDE (formerly SonarLint). In connected mode it applies the SAME rules and
+    // the same quality profile as the server-side gate, so a Blocker shows up while you are
+    // typing rather than when `.claude/hooks/sonar-pre-push.sh` blocks your push. Connect it
+    // to the server named in `sonar-project.properties`.
+    "SonarSource.sonarlint-vscode",
+
+    // --- Infrastructure, containers, and CI ---------------------------------
+    // Terraform for `infra/gcp`: `terraform fmt` on save, validation, and provider docs.
+    "hashicorp.terraform",
+    // Bicep for `infra/azure`.
+    "ms-azuretools.vscode-bicep",
+    // Dockerfile and compose language support, plus container and image management. This is
+    // the one that makes `docker compose up` from the root of this repo inspectable.
+    "ms-azuretools.vscode-docker",
+    // Schema validation and completions for the workflow files in `.github/workflows/`.
+    // A typo in a workflow is otherwise found by pushing it.
+    "github.vscode-github-actions",
+    // YAML schema support for everything else: compose files, Dependabot, issue forms.
+    "redhat.vscode-yaml",
+
+    // --- Documentation -------------------------------------------------------
+    // The docs in this repository are part of the product (ADRs, specs, the Definition of
+    // Done) and are full of Mermaid diagrams, which this renders in the built-in preview.
+    "bierner.markdown-mermaid",
+    "DavidAnson.vscode-markdownlint"
+  ],
+
+  // Extensions that actively conflict with this repository's configuration. VS Code will
+  // not recommend these and will warn if they are already installed.
+  "unwantedRecommendations": [
+    // TSLint has been deprecated since 2019 and its rules contradict the ESLint flat config.
+    "ms-vscode.vscode-typescript-tslint-plugin",
+    // Both of these format on save with their own opinions and will fight Prettier and
+    // `.editorconfig` over the same files.
+    "HookyQR.beautify",
+    "lonefy.vscode-JS-CSS-HTML-formatter"
+  ]
+}

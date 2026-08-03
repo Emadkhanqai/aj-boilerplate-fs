@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { QueryClient, injectQuery } from '@tanstack/angular-query-experimental';
-import { capabilitiesForRoles, isRole, NO_CAPABILITIES } from './roles';
+import { capabilitiesForRoles, NO_CAPABILITIES, toRoles } from './roles';
 import type { Capabilities, Role } from './roles';
 import { createAuthProvider } from './providers/provider-factory';
 import type { AuthMode, AuthSession, DevUser, SessionUser } from './auth.types';
@@ -59,7 +59,9 @@ export class AuthService {
       return [];
     }
     const rawRoles = this.profileQuery.data()?.roles ?? session.roles;
-    return rawRoles.filter((r): r is Role => isRole(r));
+    // `toRoles`, not an `isRole` filter: the API returns canonical names (`"Admin"`) and an
+    // exact-match filter drops every one of them, leaving the UI showing no role at all.
+    return toRoles(rawRoles);
   });
 
   readonly capabilitiesLoading = computed(

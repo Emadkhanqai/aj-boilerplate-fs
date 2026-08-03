@@ -1,0 +1,337 @@
+name: Supply chain
+
+# Scans the BUILT CONTAINER IMAGES and publishes an SBOM for each.
+#
+# WHY THIS EXISTS SEPARATELY FROM THE TWO CI WORKFLOWS
+# backend-ci.yml and frontend-ci.yml scan SOURCE: CodeQL reads the code, Gitleaks reads
+# the history, `dotnet list package --vulnerable` and `npm audit` read the dependency
+# manifests. Every one of them stops at the edge of the repository.
+#
+# The artefact that is actually deployed is a container image, and most of that image was
+# never in this repository. `mcr.microsoft.com/dotnet/aspnet:10.0` is a Debian userland;
+# `nginx:alpine` is Alpine plus nginx and its OpenSSL. Those OS packages carry the
+# majority of the CVEs a deployed service is exposed to, they are updated on a cadence
+# nobody here controls, and no amount of source scanning sees them. Before this workflow,
+# the images were the least-inspected part of the system and the only part that runs.
+#
+# It also runs WEEKLY on a schedule, not only on change. That is the point: an image that
+# was clean when it was built becomes vulnerable without a single commit, and a scan that
+# only fires on a pull request would report it clean forever on a quiet repository.
+#
+# Nothing here pushes an image. Images are built, scanned, described, and discarded. The
+# registry push belongs to the deployment path.
+
+on:
+  pull_request:
+    paths:
+      - 'src/backend/**'
+      - 'src/frontend/**'
+      - 'docker-compose.yml'
+      - '.trivyignore.yaml'
+      - '.github/workflows/supply-chain.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/backend/**'
+      - 'src/frontend/**'
+      - 'docker-compose.yml'
+      - '.trivyignore.yaml'
+      - '.github/workflows/supply-chain.yml'
+  schedule:
+    # Weekly, Monday 04:17 UTC. The odd minute is deliberate — every scheduled workflow on
+    # GitHub that asks for :00 is queued behind every other one.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supply-chain-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so a scan result is reproducible. Two different scanner versions disagreeing
+  # about the same image is a real thing, and "it passed yesterday" needs an explanation
+  # that is not "the database moved".
+  # Dependabot keeps the action reference current — see .github/dependabot.yml.
+  TRIVY_VERSION: '0.58.1'
+
+jobs:
+  # ==========================================================================
+  # One job per image. A matrix rather than two near-identical jobs, so that adding a
+  # third image later is three lines rather than a hundred.
+  # ==========================================================================
+  image-scan:
+    name: Scan ${{ matrix.name }} image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Required to upload the SARIF report into the repository's Code scanning tab, which
+      # is where a finding becomes visible to someone who is not reading job logs.
+      security-events: write
+    strategy:
+      # Do not cancel the frontend scan because the backend failed. Two independent
+      # results are worth more than one result and one cancellation.
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: src/backend
+            image: aj-boilerplate-api:ci
+          - name: frontend
+            context: src/frontend
+            image: aj-boilerplate-web:ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Plain `docker build` rather than a build action: these Dockerfiles need no
+      # buildx features, no cache export, and no registry, and one fewer third-party
+      # action in a supply-chain workflow is the point of the workflow.
+      - name: Build the ${{ matrix.name }} image
+        shell: bash
+        run: |
+          docker build \
+            --tag "${{ matrix.image }}" \
+            --file "${{ matrix.context }}/Dockerfile" \
+            "${{ matrix.context }}"
+          docker image inspect "${{ matrix.image }}" \
+            --format 'Built {{.RepoTags}}  size={{.Size}} bytes  created={{.Created}}'
+
+      # ----------------------------------------------------------------------
+      # THE BLOCKING SCAN.
+      #
+      # HIGH and CRITICAL only, and `ignore-unfixed: true`. Both halves of that need
+      # justifying, because both look like weakening the gate:
+      #
+      #   · MEDIUM and LOW are reported (see the full scan below) but do not block. A gate
+      #     that fails on LOW fails on every base image on most days, and a gate that is
+      #     always red is a gate everyone has already learned to ignore. The threshold
+      #     matches `npm audit --audit-level=high` in frontend-ci.yml, so the two agree.
+      #
+      #   · `ignore-unfixed` skips vulnerabilities with no released patch. There is no
+      #     action a pull request can take against one: you cannot upgrade to a version
+      #     that does not exist. Blocking on them means the only way to go green is to
+      #     add an allowlist entry, and an allowlist you are forced to use stops being
+      #     read. They remain visible in the full report and in the SARIF upload below.
+      #
+      # If a HIGH with a fix appears, the fix is a base-image bump or a dependency bump —
+      # both of which Dependabot will already have opened a pull request for.
+      # ----------------------------------------------------------------------
+      - name: Trivy — fail on fixable HIGH or CRITICAL
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scan-type: image
+          format: table
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+          # The allowlist. Entries carry a justification and an expiry date; see the file.
+          trivyignores: .trivyignore.yaml
+          # Scan OS packages AND the application dependencies baked into the image — the
+          # published .NET assemblies and the npm packages that survived into the bundle.
+          vuln-type: 'os,library'
+        env:
+          TRIVY_SKIP_DB_UPDATE: 'false'
+
+      # ----------------------------------------------------------------------
+      # THE REPORTING SCAN. Never fails the job (`exit-code: 0`), always runs even when
+      # the blocking scan above failed, and includes everything the blocking scan
+      # deliberately excludes: MEDIUM, LOW, and unfixed findings.
+      #
+      # This is what makes the exclusions above honest. The gate is narrow; the record
+      # is complete.
+      # ----------------------------------------------------------------------
+      - name: Trivy — full report (SARIF, non-blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scan-type: image
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+          ignore-unfixed: false
+          exit-code: '0'
+          vuln-type: 'os,library'
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+          # A distinct category per image, or the second upload replaces the first and the
+          # repository only ever shows findings for whichever job finished last.
+          category: trivy-image-${{ matrix.name }}
+
+      - name: Trivy — full report (JSON, for the artifact)
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scan-type: image
+          format: json
+          output: trivy-${{ matrix.name }}.json
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+          ignore-unfixed: false
+          exit-code: '0'
+          vuln-type: 'os,library'
+
+      # ----------------------------------------------------------------------
+      # SBOM. CycloneDX JSON, produced by the same tool that did the scanning, so the
+      # inventory and the findings describe the same set of packages. An SBOM from one
+      # tool and a vulnerability report from another will disagree about what is in the
+      # image, and reconciling them is worse than not having one.
+      #
+      # An SBOM is not a security control on its own. What it buys you is the ability to
+      # answer "are we affected?" in minutes rather than days, the next time a named
+      # vulnerability lands in something transitive — which is the question that actually
+      # gets asked, at the worst possible time.
+      #
+      # Generated on every run and retained for 90 days: the useful SBOM is the one for
+      # the build that is currently deployed, not the one for the build you are making now.
+      # ----------------------------------------------------------------------
+      - name: Generate CycloneDX SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scan-type: image
+          format: cyclonedx
+          output: sbom-${{ matrix.name }}.cdx.json
+          exit-code: '0'
+
+      - name: Generate SPDX SBOM
+        if: always()
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ matrix.image }}
+          scan-type: image
+          format: spdx-json
+          output: sbom-${{ matrix.name }}.spdx.json
+          exit-code: '0'
+
+      - name: Summarise
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### ${{ matrix.name }} image"
+            echo
+            echo "| Artefact | Size |"
+            echo "|---|---|"
+            for f in trivy-${{ matrix.name }}.json \
+                     sbom-${{ matrix.name }}.cdx.json \
+                     sbom-${{ matrix.name }}.spdx.json; do
+              if [ -f "$f" ]; then
+                echo "| \`$f\` | $(wc -c <"$f" | tr -d ' ') bytes |"
+              else
+                echo "| \`$f\` | not produced |"
+              fi
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload scan reports and SBOMs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-${{ matrix.name }}
+          path: |
+            trivy-${{ matrix.name }}.sarif
+            trivy-${{ matrix.name }}.json
+            sbom-${{ matrix.name }}.cdx.json
+            sbom-${{ matrix.name }}.spdx.json
+          retention-days: 90
+          if-no-files-found: warn
+
+  # ==========================================================================
+  # Fails the workflow when the allowlist has entries that have outlived their expiry
+  # date. Without this the allowlist is permanent in practice: an entry added under
+  # deadline pressure with `expired_at` six weeks out is never revisited, because nothing
+  # ever asks.
+  #
+  # Trivy itself only IGNORES expired entries — it stops suppressing the finding, so the
+  # blocking scan starts failing. That is the right behaviour and it is also a confusing
+  # way to find out. This job says so directly.
+  # ==========================================================================
+  allowlist-hygiene:
+    name: Allowlist expiry check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check .trivyignore.yaml for expired or undocumented entries
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import sys
+
+          try:
+              import yaml
+          except ImportError:
+              print("::error::PyYAML is not available on this runner.")
+              sys.exit(1)
+
+          PATH = ".trivyignore.yaml"
+          try:
+              with open(PATH) as fh:
+                  doc = yaml.safe_load(fh) or {}
+          except FileNotFoundError:
+              print(f"{PATH} is absent — nothing is allowlisted. That is the ideal state.")
+              sys.exit(0)
+
+          today = datetime.date.today()
+          problems = []
+          total = 0
+
+          for section in ("vulnerabilities", "misconfigurations", "secrets", "licenses"):
+              for entry in (doc.get(section) or []):
+                  total += 1
+                  ident = entry.get("id", "<no id>")
+                  where = f"{section}/{ident}"
+
+                  if not entry.get("statement"):
+                      problems.append(
+                          f"{where}: no `statement`. Every entry must say why this finding "
+                          f"is accepted, in a sentence the next person can evaluate."
+                      )
+
+                  expiry = entry.get("expired_at")
+                  if not expiry:
+                      problems.append(
+                          f"{where}: no `expired_at`. An allowlist entry with no expiry is "
+                          f"a permanent exception nobody will ever revisit."
+                      )
+                      continue
+
+                  if isinstance(expiry, str):
+                      try:
+                          expiry = datetime.date.fromisoformat(expiry)
+                      except ValueError:
+                          problems.append(f"{where}: `expired_at` is not an ISO date (YYYY-MM-DD).")
+                          continue
+                  if isinstance(expiry, datetime.datetime):
+                      expiry = expiry.date()
+
+                  if expiry < today:
+                      problems.append(
+                          f"{where}: expired on {expiry}. Re-justify it with a new date, or "
+                          f"remove it and fix the finding."
+                      )
+                  elif (expiry - today).days <= 14:
+                      print(f"::warning::{where} expires on {expiry}, in {(expiry - today).days} days.")
+
+          print(f"{total} allowlist entr{'y' if total == 1 else 'ies'} in {PATH}.")
+
+          if problems:
+              for p in problems:
+                  print(f"::error::{p}")
+              sys.exit(1)
+
+          print("Allowlist is documented and in date.")
+          PY

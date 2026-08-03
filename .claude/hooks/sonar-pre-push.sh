@@ -31,6 +31,12 @@
 #   It exists for first-run bootstrap, before a SonarQube project exists.
 #   USING IT IS A TECH-LEAD DECISION, NOT A DEVELOPER CONVENIENCE. Code pushed
 #   under the skip has not been analysed and must be scanned before merge.
+#
+# ANALYSIS SETTINGS ARE NOT CONFIGURED HERE. They live in SonarQube.Analysis.xml at the
+# repository root, which this hook and .github/workflows/backend-ci.yml both pass to the
+# scanner with `/s:`. That shared file is what makes a local scan and a CI scan analyse
+# the same code under the same rules. See sonar-project.properties for why the backend
+# needs an XML settings file rather than a properties file.
 
 set -u
 
@@ -150,14 +156,49 @@ api() {   # api <path-with-query>  -> body on stdout, non-zero on transport fail
 }
 
 # --- Optionally run the scan first ------------------------------------------
+# This must produce the SAME analysis CI does, or the gate it then queries describes
+# something other than what CI will decide. The three things that make it the same:
+#
+#   1. `/s:<repo-root>/SonarQube.Analysis.xml` — the one place the backend's exclusions,
+#      coverage report path, and gate behaviour are stated. The SonarScanner for .NET does
+#      NOT read sonar-project.properties, so this file is not optional decoration.
+#   2. Running from the repository ROOT, not from src/backend, because the coverage path
+#      in that settings file is relative to the scanner's working directory.
+#   3. The same solution, the same `--no-incremental` build, and the same coverage
+#      collector (`dotnet-coverage ... -f xml`), which writes the Visual Studio XML format
+#      that `sonar.cs.vscoveragexml.reportsPaths` consumes.
+#
+# Keep this block and the `quality-gate` job in .github/workflows/backend-ci.yml in step.
 if [ "${SONAR_RUN_SCAN:-0}" = "1" ]; then
   if command -v dotnet >/dev/null 2>&1; then
     printf '[sonar-pre-push] running the scanner (SONAR_RUN_SCAN=1) — this takes a while...\n' >&2
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    ( cd "$root/src/backend" 2>/dev/null || cd "$root"
-      dotnet sonarscanner begin /k:"$KEY" /d:sonar.host.url="$HOST" /d:sonar.token="$TOKEN" \
-        && dotnet build --no-incremental \
-        && dotnet sonarscanner end /d:sonar.token="$TOKEN" ) >&2 \
+    settings="$root/SonarQube.Analysis.xml"
+    solution="$root/src/backend/AjBoilerplate.slnx"
+
+    [ -f "$settings" ] || block "SONAR_RUN_SCAN=1 but $settings is missing.
+Without it this scan would use different exclusions and a different coverage path from
+CI, and the gate it produced would not be the gate CI evaluates."
+
+    # Coverage is not optional for the gate: the new-code coverage condition reads 0%
+    # when no report is produced, so a scan without it fails for a reason that has
+    # nothing to do with the code.
+    if ! command -v dotnet-coverage >/dev/null 2>&1; then
+      block "SONAR_RUN_SCAN=1 but dotnet-coverage is not installed, so this scan would
+report 0% coverage and fail the gate for the wrong reason.
+
+    dotnet tool install --global dotnet-coverage"
+    fi
+
+    ( cd "$root" \
+      && dotnet sonarscanner begin \
+           /k:"$KEY" \
+           /s:"$settings" \
+           /d:sonar.host.url="$HOST" \
+           /d:sonar.token="$TOKEN" \
+      && dotnet build "$solution" --no-incremental \
+      && dotnet-coverage collect "dotnet test $solution --no-build" -f xml -o coverage.xml \
+      && dotnet sonarscanner end /d:sonar.token="$TOKEN" ) >&2 \
       || block "The SonarQube scan itself failed. Fix the scan before pushing."
   else
     block "SONAR_RUN_SCAN=1 but dotnet is not installed, so no scan could be produced."

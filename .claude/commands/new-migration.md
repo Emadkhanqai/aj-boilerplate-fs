@@ -12,7 +12,9 @@ Create an EF Core migration following [`../standards/ef-core.md`](../standards/e
 1. Confirm the Domain model and `IEntityTypeConfiguration` changes are in place first. The
    migration is generated *from* the model, never hand-authored to lead it.
 2. Choose a name that states business intent — `AddItemArchivedAt`, not `Update1`.
-3. Add the migration, from `src/backend/`:
+3. Add the migration, from `src/backend/` (run `dotnet tool restore` once per clone — `dotnet-ef`
+   is pinned in `.config/dotnet-tools.json`, so the version you migrate with matches everyone
+   else's):
    ```bash
    dotnet ef migrations add <PascalCaseName> \
      --project src/AjBoilerplate.Infrastructure \

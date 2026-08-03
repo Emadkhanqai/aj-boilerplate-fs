@@ -36,7 +36,13 @@
       <h2 id="wn-title" class="wn-title">{{ title() }}</h2>
     </div>
 
-    <div class="wn-body">
+    <!-- tabindex="0" is load-bearing, not decoration: this element scrolls
+         (`overflow-y: auto`), and a scrollable region that cannot receive focus
+         is unreachable for anyone driving the page from the keyboard — they
+         cannot scroll to the rest of the announcement. axe flags exactly this
+         as `scrollable-region-focusable` (WCAG 2.1.1, serious). The role and
+         label stop it from being an anonymous focus stop once it is focusable. -->
+    <div class="wn-body" tabindex="0" role="group" aria-labelledby="wn-title">
       @for (p of parts(); track $index; let i = $index) {
         @if (p.kind === 'bullet') {
           <div class="wn-bullet" [class]="bulletTone(i)">

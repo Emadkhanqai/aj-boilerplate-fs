@@ -1,5 +1,6 @@
 using AjBoilerplate.Application.Abstractions;
 using AjBoilerplate.Application.Features;
+using AjBoilerplate.Application.Idempotency;
 using AjBoilerplate.Application.Identity;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Application.Messaging;
@@ -21,6 +22,14 @@ public static class DependencyInjection
         services.AddScoped<IItemService, ItemService>();
 
         services.AddScoped<IFeatureAnnouncementService, FeatureAnnouncementService>();
+
+        // Resolves the caller's own profile for GET /api/v1/me. Depends on IActorClaims, which
+        // AddApiAuthentication registers — a host that never wires up authentication can register
+        // this happily but cannot resolve it, which is correct: there is no caller to describe.
+        services.AddScoped<ICurrentUserService, CurrentUserService>();
+
+        // Claims and releases Idempotency-Key records for the Api layer's middleware.
+        services.AddScoped<IIdempotencyService, IdempotencyService>();
 
         services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
 

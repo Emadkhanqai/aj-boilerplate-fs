@@ -2,8 +2,12 @@ name: Backend CI
 
 # Gates, in order of how fast they fail:
 #   restore → format → build (warnings as errors) → unit + architecture tests
-#          → migration validation + integration tests (with coverage)
+#          → migration validation + migration bundle + integration tests (with coverage)
+#          → OpenAPI contract snapshot
 #          → quality gate → dependency vulnerabilities → secret scan → code scanning
+#
+# The .NET SDK is pinned by src/backend/global.json and the CLI tools (dotnet-ef, swagger) by
+# src/backend/.config/dotnet-tools.json, so nothing here floats to "whatever is latest today".
 #
 # Every gate runs on pull requests EXCEPT the SonarQube quality gate, which runs
 # only on pushes to main. That is a Community Build constraint, explained in full
@@ -16,11 +20,13 @@ on:
   pull_request:
     paths:
       - 'src/backend/**'
+      - 'docs/api/openapi.json'
       - '.github/workflows/backend-ci.yml'
   push:
     branches: [main]
     paths:
       - 'src/backend/**'
+      - 'docs/api/openapi.json'
       - '.github/workflows/backend-ci.yml'
   workflow_dispatch:
 
@@ -32,7 +38,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DOTNET_VERSION: '10.0.x'
+  # The SDK version is NOT set here. Every setup-dotnet below reads src/backend/global.json via
+  # `global-json-file`, so the pin lives in exactly one place and a developer's local `dotnet build`
+  # and this workflow cannot resolve different SDKs. Bump global.json, not this file.
+  GLOBAL_JSON: src/backend/global.json
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
@@ -52,12 +61,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -78,12 +87,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -121,12 +130,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -162,12 +171,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -231,12 +240,12 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -250,10 +259,13 @@ jobs:
         shell: bash
         run: dotnet build "$SOLUTION" --no-restore | tee ef-build.log
 
-      - name: Install dotnet-ef
-        run: |
-          dotnet tool install --global dotnet-ef
-          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      # The PINNED tool from src/backend/.config/dotnet-tools.json, not a floating
+      # `--global dotnet-ef`, which would install whatever is latest on the day the job runs and
+      # could generate or script migrations with a different EF version than the one the projects
+      # reference. Local tools resolve from the working directory, hence `working-directory`.
+      - name: Restore pinned .NET tools
+        working-directory: src/backend
+        run: dotnet tool restore
 
       # Renders the migrations as the idempotent SQL script a DBA reviews and deploys. The
       # standards forbid auto-applying migrations on production startup, so THIS artefact — not
@@ -264,13 +276,49 @@ jobs:
       # is covered by SqlServerFixture on every integration run.
       - name: Migration validation (idempotent script)
         shell: bash
+        working-directory: src/backend
         run: |
           dotnet ef migrations script \
             --idempotent \
-            --project         src/backend/src/AjBoilerplate.Infrastructure \
-            --startup-project src/backend/src/AjBoilerplate.Api \
+            --project         src/AjBoilerplate.Infrastructure \
+            --startup-project src/AjBoilerplate.Api \
             --no-build \
-            --output migrations.sql | tee migration-script.log
+            --output "$GITHUB_WORKSPACE/migrations.sql" | tee "$GITHUB_WORKSPACE/migration-script.log"
+
+      # The artefact a deployment actually runs: a self-contained executable that applies exactly the
+      # migrations in this commit, with no SDK, no source tree, and no `dotnet ef` on the target.
+      # Building it here proves it CAN be built on every run; deploy.yml is what runs it.
+      #
+      # Release, and therefore NOT `--no-build`. Everything else in this job reuses the Debug
+      # build, but this is the one output that leaves CI and executes against a production
+      # database — shipping an unoptimised Debug binary there to save a compile is the wrong
+      # trade. Release output does not exist at this point, so it has to build its own.
+      #
+      # ZERO-DOWNTIME RULE — expand, migrate, contract. The bundle runs BEFORE the new code is live,
+      # so this release's schema must still satisfy the release that is currently serving traffic.
+      # Never ship a destructive change in the same release as the code that stops using the column.
+      # See the "Database migrations" section of src/backend/README.md.
+      - name: Build the migration bundle
+        shell: bash
+        working-directory: src/backend
+        run: |
+          dotnet ef migrations bundle \
+            --project         src/AjBoilerplate.Infrastructure \
+            --startup-project src/AjBoilerplate.Api \
+            --configuration   Release \
+            --self-contained \
+            --target-runtime  linux-x64 \
+            --force \
+            --output "$GITHUB_WORKSPACE/migrate" | tee "$GITHUB_WORKSPACE/migration-bundle.log"
+
+      - name: Upload the migration bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-bundle
+          path: |
+            migrate
+            migrations.sql
+          retention-days: 30
 
       # Starts its own SQL Server container via Testcontainers — no service container, and no
       # connection string in this file.
@@ -292,7 +340,61 @@ jobs:
             TestResults/**
             migrations.sql
             migration-script.log
+            migration-bundle.log
             ef-build.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Gate 5b — the API contract.
+  #
+  # docs/api/openapi.json is COMMITTED, and this regenerates it from the built
+  # API and fails if the two differ. That is the whole point: the frontend
+  # generates its TypeScript types from that file, so it is the contract, and a
+  # contract that can change without anyone noticing is not one.
+  #
+  # Before this gate the guarantee was unbacked — the document was produced on
+  # demand from a running API, so an endpoint could be renamed, a field dropped,
+  # or a status code changed and nothing would object until a client broke.
+  #
+  # The failure output is a unified diff plus the breaking-change rules from
+  # docs/api/README.md, because the fix depends on which it is: an INTENDED
+  # change is fixed by regenerating and committing, an unintended one by fixing
+  # the API. Regenerating on the reviewer's behalf would defeat the gate — the
+  # diff is the artefact that has to be read.
+  #
+  # No database and no running server: `dotnet swagger tofile` loads the built
+  # assembly and asks the same provider /swagger uses. A contract gate that
+  # needed live infrastructure could not run here at all.
+  # --------------------------------------------------------------------------
+  api-contract:
+    name: OpenAPI contract snapshot
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: ${{ env.GLOBAL_JSON }}
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Verify the committed OpenAPI document is current
+        shell: bash
+        run: ./src/backend/scripts/generate-openapi.sh --check | tee openapi-check.log
+
+      - name: Upload contract check log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-contract-check
+          path: openapi-check.log
           retention-days: 7
 
   # --------------------------------------------------------------------------
@@ -341,7 +443,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       # The SonarScanner for .NET runs on the JVM.
       - uses: actions/setup-java@v4
@@ -352,7 +454,7 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
@@ -377,12 +479,19 @@ jobs:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
           SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
         run: |
+          # Analysis settings come from SonarQube.Analysis.xml via /s: so that this job and
+          # .claude/hooks/sonar-pre-push.sh analyse identically. Note the SonarScanner for .NET
+          # does NOT read sonar-project.properties — that file configures the CLI scanner only,
+          # which is why the backend needs XML while the frontend uses properties.
+          #
+          # Only the connection and the key stay here: the first two are secrets, and the key is
+          # kept out of the file so one clone of this boilerplate cannot report into another
+          # clone's project by inheriting a committed value.
           dotnet sonarscanner begin \
             /k:"$SONAR_PROJECT_KEY" \
+            /s:"$GITHUB_WORKSPACE/SonarQube.Analysis.xml" \
             /d:sonar.host.url="$SONAR_HOST_URL" \
-            /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.cs.vscoveragexml.reportsPaths=coverage.xml \
-            /d:sonar.qualitygate.wait=true
+            /d:sonar.token="$SONAR_TOKEN"
 
           dotnet build "$SOLUTION" --no-incremental
 
@@ -405,7 +514,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - name: dotnet restore
         run: dotnet restore "$SOLUTION"
@@ -468,7 +577,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
+          global-json-file: ${{ env.GLOBAL_JSON }}
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3

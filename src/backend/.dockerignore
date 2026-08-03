@@ -1,5 +1,12 @@
 **/bin/
 **/obj/
+# Not redundant with `**/bin/`, however much it looks it. On macOS and Linux the MSBuild
+# properties in .gitignore can produce directories whose NAME literally contains a backslash
+# ("bin\Debug", "BuildHost-netcore"), which `**/bin/` does not match. They then enter the build
+# context, MSBuild reads the backslash as an escape, and `dotnet publish` dies with a
+# "MSB3552: Resource file "**/*.resx" cannot be found" that points nowhere near the real cause.
+**/bin\\Debug/
+**/BuildHost-*/
 **/.vs/
 docs/
 tests/

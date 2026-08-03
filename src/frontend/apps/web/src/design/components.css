@@ -1724,11 +1724,13 @@ table.list tbody tr.clickable:hover {
 table.list tbody tr:last-child td {
   border-bottom: 0;
 }
-/* A trailing actions column (e.g. a row's Download/Copy/Edit button) right-aligns within its
-   cell instead of sitting flush against the previous column with a large empty gap trailing it. */
+/* A trailing actions column (e.g. a row's Download/Copy/Edit button) aligns to the END of its
+   cell instead of sitting flush against the previous column with a large empty gap trailing it.
+   `end`, not `right`: under `dir="rtl"` the trailing column is on the LEFT, and a physical
+   `right` would push these buttons across the row to the wrong side. */
 table.list th.col-actions,
 table.list td.col-actions {
-  text-align: right;
+  text-align: end;
 }
 
 

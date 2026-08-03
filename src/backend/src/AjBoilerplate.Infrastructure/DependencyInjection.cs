@@ -3,10 +3,12 @@ using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Infrastructure.Cloud;
 using AjBoilerplate.Infrastructure.Email;
+using AjBoilerplate.Infrastructure.Features;
 using AjBoilerplate.Infrastructure.Messaging;
 using AjBoilerplate.Infrastructure.Persistence;
 using AjBoilerplate.Infrastructure.Secrets;
 using AjBoilerplate.Infrastructure.Security;
+using AjBoilerplate.Infrastructure.Storage;
 using AjBoilerplate.Infrastructure.Time;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -25,9 +27,15 @@ public static class DependencyInjection
         AddPersistence(services, configuration, environment);
         AddCache(services, configuration);
         AddCloud(services, configuration);
+        AddStorage(services, configuration, environment);
         AddTransports(services, configuration);
 
         services.AddSingleton<IClock, SystemClock>();
+
+        // Configuration-backed feature flags. A singleton reading IConfiguration on each call, so a
+        // provider that reloads on change makes a flag flippable without a redeploy — see
+        // ConfigurationFeatureFlags.
+        services.AddSingleton<IFeatureFlags, ConfigurationFeatureFlags>();
 
         // Opaque-id obfuscation: stateless over a derived key/IV, so a singleton is safe and avoids
         // re-deriving the key from HKDF on every request.
@@ -36,6 +44,7 @@ public static class DependencyInjection
 
         services.AddScoped<IOutboxRepository, OutboxRepository>();
         services.AddScoped<IInboxRepository, InboxRepository>();
+        services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
 
         services.AddScoped<IFeatureAnnouncementRepository, FeatureAnnouncementRepository>();
 
@@ -120,6 +129,79 @@ public static class DependencyInjection
                 services.AddSingleton<ISecretsProvider, NullSecretsProvider>();
                 break;
         }
+    }
+
+    /// <summary>
+    /// File storage, following the same <c>CLOUD_PROVIDER</c> switch as <see cref="AddCloud"/>.
+    ///
+    /// <para>
+    /// <b>THE CLOUD ARMS ARE NOT IMPLEMENTED, AND THEY FAIL LOUDLY RATHER THAN QUIETLY.</b> Shipping a
+    /// Cloud Storage or Blob Storage implementation would mean adding a heavy provider SDK to every
+    /// consuming project — including the ones that store no files at all — and an untested
+    /// implementation nobody has run against a real bucket is worse than none: it looks finished.
+    /// A no-op that silently discarded uploads would be worse still.
+    /// </para>
+    ///
+    /// <para>
+    /// So: configuring a bucket or a container is read as a statement of intent this boilerplate
+    /// cannot honour, and it throws at STARTUP with the exact steps to fix it — the same discipline
+    /// <c>CloudOptions.Resolve()</c> applies to an unrecognised provider, and for the same reason. The
+    /// alternative (falling back to local storage) would put files on a container filesystem that
+    /// disappears on the next deploy, which is a data-loss bug discovered long after the fact.
+    /// </para>
+    ///
+    /// <para>
+    /// With no bucket or container configured, <see cref="LocalFileStorage"/> is registered — but only
+    /// in Development, because a filesystem is process-local and would silently stop working the
+    /// moment a deployed environment runs more than one instance.
+    /// </para>
+    /// </summary>
+    private static void AddStorage(IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
+    {
+        services.Configure<FileStorageOptions>(configuration.GetSection(FileStorageOptions.SectionName));
+
+        var storage = configuration.GetSection(FileStorageOptions.SectionName).Get<FileStorageOptions>() ?? new FileStorageOptions();
+        var cloud = configuration.GetSection(CloudOptions.SectionName).Get<CloudOptions>() ?? new CloudOptions();
+
+        var (configured, setting, guidance) = cloud.Resolve() switch
+        {
+            CloudProvider.Azure => (
+                !string.IsNullOrWhiteSpace(storage.Azure.Container),
+                "Storage:Azure:Container",
+                "Add Azure.Storage.Blobs to AjBoilerplate.Infrastructure, implement IFileStorage over BlobContainerClient "
+                    + "(authenticating with DefaultAzureCredential, as AzureKeyVaultSecretsProvider does), and register it here."),
+            _ => (
+                !string.IsNullOrWhiteSpace(storage.Gcp.Bucket),
+                "Storage:Gcp:Bucket",
+                "Add Google.Cloud.Storage.V1 to AjBoilerplate.Infrastructure, implement IFileStorage over StorageClient "
+                    + "(authenticating with Application Default Credentials, as GcpSecretManagerSecretsProvider does), and register it here."),
+        };
+
+        if (configured)
+        {
+            // Intent stated and not honourable. Failing at STARTUP is right here specifically because
+            // the operator has asked for cloud storage: booting anyway would mean either discarding
+            // files or writing them to a container filesystem that vanishes on the next deploy, and
+            // both are discovered long after the data is gone.
+            throw new InvalidOperationException(
+                $"{setting} is configured, but this boilerplate ships no cloud file-storage implementation. "
+                + guidance
+                + " Refusing to start rather than falling back to local disk, which would lose every file on the next deploy.");
+        }
+
+        if (environment.IsDevelopment())
+        {
+            services.AddSingleton<IFileStorage, LocalFileStorage>();
+            return;
+        }
+
+        // Nothing configured, outside Development. This must NOT throw at startup: most applications
+        // built on this boilerplate store no files at all, and refusing to boot over an unused
+        // optional dependency would be a worse default than the problem it guards against. So the
+        // failure is deferred to first use — an application that never touches IFileStorage runs
+        // normally, and one that does gets an immediate, actionable error instead of writing to a
+        // disk that disappears.
+        services.AddSingleton<IFileStorage>(_ => new UnconfiguredFileStorage(setting, guidance));
     }
 
     private static void AddTransports(IServiceCollection services, IConfiguration configuration)

@@ -16,7 +16,27 @@ It is produced **from the code**, not written by hand. The API generates it from
 and the types in `AjBoilerplate.Contracts`, so it cannot describe an endpoint that does not
 exist or a shape the server does not actually serialise.
 
-With the API running:
+[`openapi.json`](openapi.json) in this folder is the **committed snapshot**, and it is the file the
+frontend generates from. Regenerate it whenever you change the contract:
+
+```bash
+cd src/backend
+./scripts/generate-openapi.sh            # rewrite openapi.json
+./scripts/generate-openapi.sh --check    # fail if it is out of date (what CI runs)
+```
+
+Neither needs a running API or a database — the script loads the built assembly and asks the same
+`ISwaggerProvider` the `/swagger` endpoint uses.
+
+**CI fails the build when the snapshot and the API disagree** (the `OpenAPI contract snapshot` job in
+`.github/workflows/backend-ci.yml`). That is what makes this document a contract rather than a
+description of one: without the gate, an endpoint could be renamed or a field dropped and nothing
+would object until a client broke. When it fails, read the diff — if the change was intended,
+regenerate and commit the snapshot alongside the code change so the contract change is *reviewed*
+rather than discovered; if it was not, fix the API. Regenerating to silence the gate defeats it
+entirely.
+
+With the API running you can also browse it live:
 
 | Artefact | URL |
 |---|---|
@@ -43,7 +63,7 @@ idea how the endpoint fails. Treat a missing failure annotation as a bug.
 ## How the frontend consumes it
 
 ```bash
-# with the API running on localhost:5080
+# from the committed snapshot — no API process required
 cd src/frontend
 npm run generate:api
 ```

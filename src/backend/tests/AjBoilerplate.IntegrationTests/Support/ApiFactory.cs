@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -40,8 +41,29 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// It is also exactly how a container or a cloud runtime supplies this value, which means these
     /// tests exercise the real configuration path rather than a test-only seam.
     /// </summary>
-    public ApiFactory(string connectionString) =>
+    public ApiFactory(string connectionString)
+    {
         Environment.SetEnvironmentVariable("ConnectionStrings__Default", connectionString);
+        Environment.SetEnvironmentVariable(
+            "RateLimiting__PermitLimit", TestPermitLimit.ToString(CultureInfo.InvariantCulture));
+    }
+
+    /// <summary>
+    /// How many requests the test host allows per rate-limit window.
+    ///
+    /// The production default is 100 per 60 seconds, partitioned by <c>User.Identity.Name</c> — and
+    /// <see cref="TestAuthHandler"/> gives every authenticated test caller the same <c>name</c>
+    /// claim, so THE ENTIRE SUITE SHARES ONE PARTITION. The whole collection runs well inside a
+    /// single 60-second window, so at the production limit the suite eventually 429s itself, and the
+    /// failure lands on whichever unrelated test happened to be running when the quota ran out. That
+    /// is a property of how this suite authenticates, not of the code under test.
+    ///
+    /// Raised here rather than by weakening the shipped default: the limiter that ships must stay the
+    /// one that ships. Nothing asserts on 429, so nothing is lost by lifting it for the test host — if
+    /// you ever DO write a rate-limit test, give it its own factory with a low limit rather than
+    /// lowering this one back down.
+    /// </summary>
+    private const int TestPermitLimit = 10_000;
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {

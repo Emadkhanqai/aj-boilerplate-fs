@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { ADMIN, signInAs } from '../fixtures/auth';
+import { dismissWhatsNew } from '../fixtures/whats-new';
 
 /**
  * The sample end-to-end journey: list -> create -> edit -> delete, against the MSW-backed `demo`
@@ -20,6 +21,9 @@ test.describe('Items CRUD journey', { tag: ['@mocked'] }, () => {
     await page.goto('/items');
     await expect(page.getByRole('heading', { name: 'Items', level: 1 })).toBeVisible();
     await expect(page.getByTestId('item-row').first()).toBeVisible();
+    // The demo build seeds one "What's new" announcement per session, and its deliberately inert
+    // backdrop (ADR-0007) intercepts every click aimed at the page beneath it.
+    await dismissWhatsNew(page);
 
     // --- create ---
     const name = `Playwright item ${Date.now()}`;

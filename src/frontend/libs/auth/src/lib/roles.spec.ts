@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { NO_CAPABILITIES, ROLES, capabilitiesFor, capabilitiesForRoles, isRole } from './roles';
+import {
+  NO_CAPABILITIES,
+  ROLES,
+  capabilitiesFor,
+  capabilitiesForRoles,
+  isRole,
+  toRole,
+  toRoles,
+} from './roles';
 
 describe('roles', () => {
   it('recognises every declared role', () => {
@@ -10,6 +18,35 @@ describe('roles', () => {
 
   it('rejects an unknown role string', () => {
     expect(isRole('superuser')).toBe(false);
+  });
+
+  describe('normalising role names off the wire', () => {
+    it('accepts the canonical names the API actually returns', () => {
+      // Regression: the API returns "Admin", `ROLES` holds "admin". An exact-match filter
+      // discarded every role the server sent and the UI showed "no role" for real admins.
+      expect(toRole('Admin')).toBe('admin');
+      expect(toRole('Editor')).toBe('editor');
+      expect(toRole('Viewer')).toBe('viewer');
+    });
+
+    it('tolerates the surrounding whitespace a claim can carry', () => {
+      expect(toRole('  Admin ')).toBe('admin');
+    });
+
+    it('returns null for a role this application does not know', () => {
+      expect(toRole('superuser')).toBeNull();
+    });
+
+    it('normalises a whole list, dropping only the unknown entries', () => {
+      expect(toRoles(['Admin', 'superuser', 'VIEWER'])).toEqual(['admin', 'viewer']);
+    });
+
+    it('feeds values that resolve against the capability map', () => {
+      // The point of returning a normalised value rather than widening the type guard: the
+      // result has to be a usable key, not merely a string that type-checks.
+      const roles = toRoles(['Admin']);
+      expect(capabilitiesForRoles(roles).canAdminister).toBe(true);
+    });
   });
 
   it('grants a viewer read access only', () => {

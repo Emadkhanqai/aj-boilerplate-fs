@@ -1,0 +1,292 @@
+# Dependabot version updates.
+#
+# WHY THIS FILE EXISTS
+# CI already DETECTS vulnerable dependencies — `dotnet list package --vulnerable` in
+# backend-ci.yml fails at Moderate and above, `npm audit --audit-level=high` fails in
+# frontend-ci.yml, and `.github/workflows/supply-chain.yml` fails on HIGH/CRITICAL findings
+# in the built container images. None of them opens a pull request. Detection without
+# remediation turns a red build into a thing people learn to route around, usually by
+# raising the threshold.
+#
+# This file closes that loop for the four ecosystems this repository actually uses: NuGet,
+# npm, GitHub Actions, and Docker base images.
+#
+# ---------------------------------------------------------------------------
+# ON PR SPAM, WHICH IS THE REASON MOST TEAMS TURN DEPENDABOT OFF
+#
+# Ungrouped, this repository would produce something like fifteen pull requests a week —
+# one per Angular package alone. Three deliberate choices keep it to a handful:
+#
+#   1. GROUPING. Packages that must move together (all of Angular, all of Nx, the whole
+#      PrimeNG set) are one pull request, because updating them individually produces a
+#      broken intermediate state and a red CI run that is nobody's fault.
+#   2. MINOR AND PATCH ARE BATCHED; MAJORS ARE NOT. A major version needs reading, and
+#      burying it in a batch of twelve patches is how a breaking change gets merged
+#      unread. Majors therefore arrive as their own pull request.
+#   3. WEEKLY, NOT DAILY. A daily cadence means dependency review is never a scheduled
+#      activity and always an interruption.
+#
+# SECURITY updates are a different mechanism and are NOT configured here — they are
+# enabled under Settings → Code security → Dependabot security updates, they ignore the
+# schedule below, and they are not subject to `open-pull-requests-limit`. Leave them on.
+# The limits here throttle routine version bumps only.
+#
+# ---------------------------------------------------------------------------
+# COMMIT MESSAGES
+# Every `commit-message` block below produces a Conventional Commit, because
+# `.claude/hooks/commit-msg.sh` enforces the convention and a bot that cannot commit is
+# not much of a bot. Dependabot renders `prefix: build` as `build(deps): bump …` and
+# `prefix-development` as the same for devDependencies. See CONTRIBUTING.md.
+
+version: 2
+
+updates:
+  # ==========================================================================
+  # NuGet — the .NET 10 solution
+  #
+  # `directories` with globs rather than a single `directory`: the NuGet updater looks
+  # for project files in each named directory and does not recurse arbitrarily, and this
+  # solution keeps its projects two levels down under `src/` and `tests/`. The solution
+  # file is `.slnx`, which is new enough that relying on solution parsing alone is a bet;
+  # naming the project directories does not depend on it.
+  #
+  # If an update you expect never appears, check the Dependabot run log under
+  # Insights → Dependency graph → Dependabot for a "no dependency files found" line
+  # against one of these paths.
+  # ==========================================================================
+  - package-ecosystem: 'nuget'
+    directories:
+      - '/src/backend'
+      - '/src/backend/src/*'
+      - '/src/backend/tests/*'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'backend'
+    commit-message:
+      prefix: 'build'
+      prefix-development: 'build'
+      include: 'scope'
+    groups:
+      # The runtime moves as a unit. A solution on mixed Microsoft.Extensions.* versions
+      # is a solution with a package downgrade warning, which this build treats as an
+      # error.
+      dotnet-runtime:
+        patterns:
+          - 'Microsoft.Extensions.*'
+          - 'Microsoft.AspNetCore.*'
+          - 'System.*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # EF Core and its provider must match exactly or the design-time tooling breaks in
+      # ways whose error messages point somewhere else entirely.
+      entity-framework:
+        patterns:
+          - 'Microsoft.EntityFrameworkCore*'
+          - 'Microsoft.Data.SqlClient'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Test infrastructure. Failures here are loud, immediate, and contained.
+      backend-test-tooling:
+        patterns:
+          - 'xunit*'
+          - 'NSubstitute*'
+          - 'Shouldly'
+          - 'FluentAssertions*'
+          - 'Testcontainers*'
+          - 'coverlet*'
+          - 'Microsoft.NET.Test.Sdk'
+          - 'NetArchTest*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Everything else, batched. Majors are excluded from every group above and below,
+      # so they arrive individually.
+      backend-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+
+  # ==========================================================================
+  # npm — the Nx workspace
+  #
+  # One directory: the workspace root. Nx libraries under `libs/*` have `package.json`
+  # files, but they are workspace members with no independent lockfile, so pointing
+  # Dependabot at them would produce updates npm cannot install.
+  # ==========================================================================
+  - package-ecosystem: 'npm'
+    directory: '/src/frontend'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'frontend'
+    commit-message:
+      prefix: 'build'
+      prefix-development: 'build'
+      include: 'scope'
+    groups:
+      # Angular publishes ~15 packages that share a version and will not run mixed.
+      # `@angular-devkit/*` and `@schematics/angular` are on the same train.
+      angular:
+        patterns:
+          - '@angular/*'
+          - '@angular-devkit/*'
+          - '@schematics/angular'
+          - 'angular-eslint'
+          - 'ng-packagr'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Nx pins its plugins to the workspace version and refuses to run when they differ.
+      nx:
+        patterns:
+          - 'nx'
+          - '@nx/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # PrimeNG plus its theming packages — ADR-0003 makes this the only component
+      # library, so it is a single surface that moves together.
+      primeng:
+        patterns:
+          - 'primeng'
+          - 'primeicons'
+          - '@primeuix/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      # Lint and type tooling. These break the build rather than the product, which makes
+      # them safe to batch and unpleasant to receive one at a time.
+      lint-and-types:
+        patterns:
+          - 'eslint'
+          - '@eslint/*'
+          - 'eslint-config-*'
+          - 'typescript-eslint'
+          - '@typescript-eslint/*'
+          - 'prettier'
+          - 'typescript'
+          - '@types/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      test-tooling:
+        patterns:
+          - 'vitest'
+          - '@vitest/*'
+          - 'vite'
+          - '@playwright/*'
+          - 'playwright'
+          - '@testing-library/*'
+          - 'jsdom'
+          - 'msw'
+          - '@axe-core/*'
+        update-types:
+          - 'minor'
+          - 'patch'
+      frontend-minor-and-patch:
+        patterns:
+          - '*'
+        update-types:
+          - 'minor'
+          - 'patch'
+    ignore:
+      # Angular and Nx majors are migrations, not bumps: both ship `ng update` /
+      # `nx migrate` schematics that rewrite source, and a Dependabot pull request that
+      # only edits package.json produces a workspace that does not build. Run the
+      # official migration by hand and let that be its own change.
+      #
+      # This does NOT suppress security updates — those bypass `ignore` for the versions
+      # they patch.
+      - dependency-name: '@angular/*'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'nx'
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@nx/*'
+        update-types: ['version-update:semver-major']
+
+  # ==========================================================================
+  # GitHub Actions — every workflow in .github/workflows/
+  #
+  # `directory: "/"` is correct and is not a typo: the Actions ecosystem is rooted at the
+  # repository root and finds the workflow directory itself. Pointing it at
+  # `/.github/workflows` finds nothing, silently.
+  #
+  # This is the ecosystem most worth having. A pinned action tag going stale is invisible
+  # — nothing fails — right up to the point where it is a supply-chain incident, and the
+  # actions in this repository include ones that receive a token (`gitleaks-action`,
+  # `codeql-action`, `google-github-actions/auth`, `azure/login`).
+  # ==========================================================================
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - 'dependencies'
+      - 'ci'
+    commit-message:
+      prefix: 'ci'
+      include: 'scope'
+    groups:
+      # Actions are independent of one another and mostly trivial to review, so a single
+      # weekly pull request for all of them is the right granularity — including majors,
+      # which for an action usually means "the runner Node version changed".
+      github-actions:
+        patterns:
+          - '*'
+
+  # ==========================================================================
+  # Docker — the base images the two Dockerfiles build FROM
+  #
+  # `mcr.microsoft.com/dotnet/sdk:10.0`, `mcr.microsoft.com/dotnet/aspnet:10.0`,
+  # `node:22-alpine`, and `nginx:alpine`. These carry the OS packages that image scanning
+  # in `.github/workflows/supply-chain.yml` reports on, and a stale base image is the most
+  # common source of a HIGH finding that no application change can fix.
+  #
+  # NOTE ON COMPOSE FILES. The images in `docker-compose.yml`,
+  # `src/backend/docker-compose.yml`, and `src/frontend/docker-compose.yml` are NOT covered
+  # by this ecosystem. GitHub ships a separate `docker-compose` ecosystem; it is not
+  # enabled here because an unrecognised ecosystem name makes Dependabot reject this entire
+  # file rather than skip that one entry. Add it once you have confirmed your GitHub plan
+  # supports it — until then the compose images are on floating tags (`2022-latest`,
+  # `7-alpine`) and refresh on `docker compose pull`.
+  # ==========================================================================
+  - package-ecosystem: 'docker'
+    directories:
+      - '/src/backend'
+      - '/src/frontend'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 3
+    labels:
+      - 'dependencies'
+      - 'docker'
+      - 'security'
+    commit-message:
+      prefix: 'build'
+      include: 'scope'
+    groups:
+      base-images:
+        patterns:
+          - '*'

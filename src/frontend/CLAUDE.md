@@ -60,6 +60,28 @@ moves to `shared/*` — it does not get imported sideways.
 11. **No secrets in the repo.** `src/environments/*` and `public/env.js` hold placeholders only;
     real values arrive at runtime via `docker/40-env.sh`.
 
+## Bundle budgets
+
+Three budgets in `apps/web/project.json`. That file is schema-validated JSON and cannot carry
+comments, so the reasoning lives here — change one, change this.
+
+| Budget | Warn / error | Measured today | Catches |
+|---|---|---|---|
+| `initial` | 1.2mb / 1.6mb | **886.85 kB** | A feature imported eagerly that should have been lazy |
+| `anyScript` | 900kb / 1.2mb | **667.39 kB** (largest chunk) | A single chunk ballooning — **including lazy ones**, which `initial` cannot see |
+| `anyComponentStyle` | 10kb / 14kb | ~8 kB (the What's New modal) | A component carrying too much bespoke CSS — see ADR-0007 |
+
+Two things worth knowing before you touch these numbers:
+
+- **The units are decimal.** `1kb` is 1000 bytes, not 1024. Verified, not assumed: an 880kb
+  ceiling reports *"Budget 880.00 kB was not met by 6.85 kB with a total of 886.85 kB"*, which only
+  reconciles at 1000. Getting this wrong overstates your headroom by about 2.4%.
+- **Headroom is deliberate**, and each warning sits ~35% above what is measured today. ADR-0007
+  records why: the `anyComponentStyle` budget was once set flush against the then-current size, and
+  the very next legitimate addition tripped it by ten bytes. A ceiling set to hug today's size is a
+  tripwire, not a budget. When one of these fires, the first question is what grew and why — not
+  what number would make it stop.
+
 ## Optimistic concurrency
 
 Any editable record carries a `rowVersion`. Read it with the record, send it back on update, and

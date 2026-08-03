@@ -138,6 +138,14 @@ override.tf.json
 *.swp
 *.swo
 *~
+# `!.vscode/` comes FIRST and is load-bearing. Excluding a directory stops git descending
+# into it at all, and a file inside an excluded directory cannot be re-included — so if
+# anything excludes `.vscode/` itself, the four negations below never get a chance to
+# match. A global ignore file (`core.excludesFile`, commonly `~/.gitignore_global`) very
+# often contains exactly that line, which silently hides the committed workspace settings
+# on that developer's machine and nowhere else. A repository `.gitignore` outranks the
+# global one, so re-including the directory here fixes it for everyone.
+!.vscode/
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json

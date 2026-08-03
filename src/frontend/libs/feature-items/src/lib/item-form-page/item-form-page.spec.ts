@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/angular';
+import { render, screen, fireEvent, within } from '@testing-library/angular';
 import { provideRouter } from '@angular/router';
 import { provideLocationMocks } from '@angular/common/testing';
 import { provideZonelessChangeDetection } from '@angular/core';
@@ -87,5 +87,87 @@ describe('ItemFormPageComponent (create mode)', () => {
     const banner = await screen.findByTestId('conflict-banner');
     expect(banner.textContent).toContain('Someone else changed this item');
     expect(screen.getByTestId('conflict-reload')).toBeTruthy();
+  });
+});
+
+/**
+ * The unsaved-changes guard, exercised through the real component rather than a stub — the guard
+ * itself is unit-tested in `libs/shared/util/src/lib/unsaved-changes.guard.spec.ts`, and these
+ * assert the half that lives HERE: that a dirty form reports itself dirty, and that confirming
+ * raises the app's own dialog rather than a native one.
+ */
+describe('ItemFormPageComponent (unsaved changes)', () => {
+  it('reports no unsaved changes on an untouched form', async () => {
+    const { fixture } = await renderForm({});
+    const component = fixture.componentInstance;
+
+    expect(component.hasUnsavedChanges()).toBe(false);
+  });
+
+  it('reports unsaved changes once the user has typed', async () => {
+    const { fixture } = await renderForm({});
+    const component = fixture.componentInstance;
+
+    fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'Half-typed' } });
+
+    expect(component.hasUnsavedChanges()).toBe(true);
+  });
+
+  it('raises the app confirm dialog — not window.confirm — when the guard asks to discard', async () => {
+    const nativeConfirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { fixture } = await renderForm({});
+    const component = fixture.componentInstance;
+
+    fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'Half-typed' } });
+    void component.confirmDiscard();
+    fixture.detectChanges();
+
+    expect(await screen.findByText('Discard your changes?')).toBeTruthy();
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    nativeConfirm.mockRestore();
+  });
+
+  it('resolves true and closes the dialog when the user confirms the discard', async () => {
+    const { fixture } = await renderForm({});
+    const component = fixture.componentInstance;
+
+    fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'Half-typed' } });
+    const decision = component.confirmDiscard();
+    fixture.detectChanges();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' }));
+
+    await expect(decision).resolves.toBe(true);
+  });
+
+  it('resolves false — keeping the user on the page with their work — when they cancel', async () => {
+    const { fixture } = await renderForm({});
+    const component = fixture.componentInstance;
+
+    fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'Half-typed' } });
+    const decision = component.confirmDiscard();
+    fixture.detectChanges();
+
+    // Scoped to the dialog on purpose: the FORM also has a Cancel button, and an unscoped
+    // query matches both. Clicking the wrong one would test nothing and look like it passed.
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await expect(decision).resolves.toBe(false);
+    // The half-typed value must still be there — a "stay" that silently cleared the form would
+    // be worse than the navigation it prevented.
+    expect((screen.getByLabelText(/Name/) as HTMLInputElement).value).toBe('Half-typed');
+  });
+
+  it('does not prompt after a successful save, because saving marks the form pristine', async () => {
+    const { fixture } = await renderForm({ create: () => of(SAVED) });
+    const component = fixture.componentInstance;
+
+    fireEvent.input(screen.getByLabelText(/Name/), { target: { value: 'New thing' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create item' }));
+
+    // Otherwise every successful save would ask "discard your changes?" on the way to the list —
+    // the fastest way to teach users that this dialog means nothing.
+    await vi.waitFor(() => expect(component.hasUnsavedChanges()).toBe(false));
   });
 });

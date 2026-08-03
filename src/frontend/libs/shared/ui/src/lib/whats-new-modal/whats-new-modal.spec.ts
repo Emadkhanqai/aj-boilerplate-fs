@@ -40,6 +40,20 @@ describe('WhatsNewModalComponent', () => {
       expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
     });
 
+    it('makes the scrolling body reachable from the keyboard, with a name', async () => {
+      // The body scrolls (`overflow-y: auto`). If it is not focusable, a keyboard-only
+      // user cannot scroll it and simply never sees the rest of a long announcement —
+      // axe's `scrollable-region-focusable`, WCAG 2.1.1. Regression test: dropping the
+      // tabindex here is a silent accessibility loss that nothing else catches.
+      const { container } = await renderModal([announcement()]);
+
+      const body = container.querySelector('.wn-body');
+      expect(body?.getAttribute('tabindex')).toBe('0');
+      // Focusable and anonymous is its own defect, so the name has to resolve too.
+      expect(body?.getAttribute('aria-labelledby')).toBe('wn-title');
+      expect(container.querySelector('#wn-title')).toBeTruthy();
+    });
+
     it('marks the pagination dots as tabs and reflects the selected one', async () => {
       await renderModal([announcement({ id: 'a' }), announcement({ id: 'b' })]);
 

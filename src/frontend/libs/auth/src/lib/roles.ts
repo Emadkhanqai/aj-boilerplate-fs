@@ -21,6 +21,32 @@ export function isRole(value: string): value is Role {
 }
 
 /**
+ * Normalises a role name coming from outside this file — an API response, a token claim, a
+ * stored session — into one of `ROLES`, or `null` when it is not a role we know.
+ *
+ * **Use this, not `isRole`, on anything that crossed the wire.** The two are not
+ * interchangeable and the difference is a real defect we shipped once: the API returns
+ * *canonical* role names (`"Admin"`), while `ROLES` is lower-case, so an `isRole` filter
+ * silently discarded every role the server sent and the UI rendered "no role" for users who
+ * plainly had one. Capabilities kept working — they come from `/me` — which is exactly what
+ * made it hard to spot.
+ *
+ * Note it must return the normalised value rather than being a case-insensitive type guard.
+ * A guard that let `"Admin"` through would be worse than the bug it replaced: the value would
+ * type as `Role` but miss every `CAPABILITIES_BY_ROLE` lookup, turning a wrong label into an
+ * undefined dereference.
+ */
+export function toRole(value: string): Role | null {
+  const normalised = value.trim().toLowerCase();
+  return (ROLES as readonly string[]).includes(normalised) ? (normalised as Role) : null;
+}
+
+/** Normalises a list of wire role names, dropping any this application does not know. */
+export function toRoles(values: readonly string[]): Role[] {
+  return values.map(toRole).filter((role): role is Role => role !== null);
+}
+
+/**
  * The capability flags the UI gates on. When your API exposes a `/me` endpoint returning the
  * same shape, alias this type to the generated response type instead of declaring it here, so
  * the client and server can never drift.

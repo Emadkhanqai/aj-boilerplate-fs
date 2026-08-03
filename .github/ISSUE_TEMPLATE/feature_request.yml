@@ -1,0 +1,143 @@
+# Feature request — GitHub issue form.
+#
+# THE FIELD ORDER IS THE POINT.
+#
+# The problem is asked first and is required; the proposed solution is asked second
+# and is not. That inversion is deliberate. A request that opens with a solution has
+# already closed off every other solution, and the discussion that follows is about
+# an implementation nobody has yet agreed is needed. Asking for the problem first
+# costs the reporter thirty seconds and regularly reveals that the real answer is a
+# different, smaller change — or that the problem is already solved.
+#
+# The scope checkbox at the bottom carries more weight than any other field here.
+# See the comment above it.
+
+name: Feature request
+description: Propose a change to the boilerplate itself.
+title: '[feature]: '
+labels: ['enhancement', 'triage']
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write this: is this a change to **the boilerplate**, or a change to
+        **the product you are building with it**?
+
+        This repository ships no business domain and is meant to keep it that way. The
+        sample `Item` entity exists to be deleted on your first day. If your idea only
+        makes sense once you know what your product does, it belongs in your own
+        repository, not here — however good the idea is.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What is difficult, error-prone, or impossible today. Describe the problem
+        without naming a solution — that comes next.
+
+        Concrete beats abstract. "Every consumer writes the same fifty lines of X, and
+        three of the four I have seen got the error handling wrong" is a problem worth
+        acting on. "There is no built-in X" is a missing feature, which is not the same
+        thing and is not on its own an argument for adding one.
+      placeholder: >-
+        When a migration is added, nothing checks that it can be rendered as an
+        idempotent script until CI runs, so a broken migration is discovered minutes
+        after the push rather than seconds after it is written.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: >-
+        What you would do about it, if you have a view. Optional — a well-described
+        problem with no proposed solution is a perfectly good issue, and often a better
+        one.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >-
+        What else you thought about and why you set it aside. Include "do nothing" —
+        it is a genuine option, and saying why it is not good enough is the strongest
+        part of most feature requests.
+
+        This section is also what stops the same idea being re-proposed in six months
+        by someone who does not know it was already weighed.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: stack
+    attributes:
+      label: Which part of the stack it affects
+      description: Tick every part that would change.
+      multiple: true
+      options:
+        - Backend (.NET, EF Core, API)
+        - Frontend (Angular, Nx, PrimeNG)
+        - Infrastructure (Terraform, Bicep, Docker)
+        - CI / GitHub Actions workflows
+        - The .claude harness (hooks, commands, agents, standards)
+        - Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adr
+    attributes:
+      label: Does this need an ADR
+      description: >-
+        The bar, from `docs/adr/README.md`: write one when the decision is expensive to
+        reverse, crosses team or layer boundaries, constrains future work, or will
+        provoke "why is it like this?" from someone who was not there. Do not write one
+        for a choice a single pull request can undo.
+
+        Getting this wrong in either direction is cheap to correct, so answer with your
+        honest reading rather than agonising.
+      options:
+        - 'No — a single pull request could undo this'
+        - 'Yes — it is expensive to reverse or constrains future work'
+        - 'Possibly — I would like a maintainer to decide'
+    validations:
+      required: true
+
+  - type: textarea
+    id: consequences
+    attributes:
+      label: What this would cost
+      description: >-
+        Optional, and it earns a lot of goodwill. Every addition to a boilerplate is
+        carried by every consumer forever, including the ones who do not want it and
+        have to work out how to remove it cleanly.
+
+        Worth naming: new dependencies, new required configuration, longer CI, more to
+        learn on day one, and anything that makes the tree harder to delete from.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: >-
+            I searched existing issues and discussions, open and closed, and this is not
+            already proposed.
+          required: true
+        # This is the checkbox that matters. The most common bad feature request for a
+        # boilerplate is somebody's product feature, proposed in complete good faith by
+        # someone who has been living in their own domain all week and stopped noticing
+        # which half of the tree it belongs to. Ticking a box does not stop that, but
+        # reading the sentence sometimes does.
+        - label: >-
+            This belongs in a domain-free boilerplate that every consumer inherits — not
+            in my own project. It would be useful to someone building something entirely
+            unlike what I am building.
+          required: true

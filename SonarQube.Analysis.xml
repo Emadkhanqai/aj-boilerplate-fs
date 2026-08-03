@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+  Backend analysis settings for the SonarScanner for .NET.
+
+  WHY THIS FILE EXISTS IN THIS FORMAT
+  The SonarScanner for .NET does not read `sonar-project.properties`. That is documented
+  upstream and it is the most common reason a .NET Sonar configuration silently has no
+  effect: the file is present, it looks right, and nothing reads it. The MSBuild-based
+  scanner reads its settings either from `/d:` command-line arguments or from an XML
+  settings file passed with `/s:`, which is this file.
+
+  HOW IT IS PASSED
+  The path must be ABSOLUTE. Both callers construct it from the repository root:
+
+    .claude/hooks/sonar-pre-push.sh     /s:"$root/SonarQube.Analysis.xml"
+    .github/workflows/backend-ci.yml    /s:"$GITHUB_WORKSPACE/SonarQube.Analysis.xml"
+
+  Those two callers passing the same file is the entire point. Before it existed, CI
+  passed its analysis settings inline and the hook passed none, so a local scan and a CI
+  scan analysed the same code under different rules.
+
+  PRECEDENCE
+  Server-side project settings, then this file, then `/d:` arguments — last wins. Anything
+  a workflow still passes with `/d:` overrides what is written here, so keep the workflows
+  limited to the values that genuinely cannot live in a file: the host URL, the token, and
+  the project key.
+
+  TARGETS SONARQUBE COMMUNITY BUILD. No `sonar.branch.name`, no `sonar.pullrequest.*` —
+  both require Developer Edition or above.
+-->
+<SonarQubeAnalysisProperties xmlns="http://www.sonarsource.com/msbuild/integration/2015/1">
+
+  <!-- ===================================================================== -->
+  <!-- Identity                                                              -->
+  <!--                                                                       -->
+  <!-- The key and name are NOT set here. Both callers pass the key with     -->
+  <!-- `/k:`, sourced from `SONAR_PROJECT_KEY` (a repository variable in CI, -->
+  <!-- an environment variable locally), so that one clone of this           -->
+  <!-- boilerplate cannot report into another clone's project by inheriting  -->
+  <!-- a committed key. The human-readable fallback is in                    -->
+  <!-- `sonar-project.properties`.                                           -->
+  <!-- ===================================================================== -->
+
+  <Property Name="sonar.sourceEncoding">UTF-8</Property>
+
+  <!-- Blame-based attribution of new code. Without it, "new code" degrades to a
+       whole-project comparison and the gate stops being about your change. -->
+  <Property Name="sonar.scm.provider">git</Property>
+
+  <!-- ===================================================================== -->
+  <!-- Coverage                                                              -->
+  <!--                                                                       -->
+  <!-- `dotnet-coverage collect ... -f xml -o coverage.xml` writes the       -->
+  <!-- Visual Studio coverage XML format, which is what                      -->
+  <!-- `sonar.cs.vscoveragexml.reportsPaths` consumes. This is NOT the same  -->
+  <!-- as the Cobertura file the XPlat Code Coverage collector produces; if  -->
+  <!-- you switch collectors you must switch the property with it, or        -->
+  <!-- coverage silently reports as 0% and the new-code coverage condition   -->
+  <!-- fails for a reason that has nothing to do with the tests.             -->
+  <!--                                                                       -->
+  <!-- The path is relative to the directory the scanner runs in — the       -->
+  <!-- repository root in both callers.                                      -->
+  <!-- ===================================================================== -->
+  <Property Name="sonar.cs.vscoveragexml.reportsPaths">coverage.xml</Property>
+
+  <!-- ===================================================================== -->
+  <!-- Scope                                                                 -->
+  <!--                                                                       -->
+  <!-- The MSBuild scanner already derives the file list from the projects   -->
+  <!-- it observes being built, so `sonar.sources` is not set and must not   -->
+  <!-- be: setting it fights the integration rather than helping it.         -->
+  <!-- These exclusions remove things that ARE compiled but are not source   -->
+  <!-- anyone wrote or can act on.                                           -->
+  <!-- ===================================================================== -->
+  <Property Name="sonar.exclusions">**/bin/**,**/obj/**,**/TestResults/**</Property>
+
+  <!-- Generated EF Core artefacts. The migration BODIES are deliberately not excluded:
+       a migration is reviewed code and a bad one is a production incident. What is
+       excluded is the two files EF regenerates wholesale, which no one edits and whose
+       findings are therefore unactionable. -->
+  <Property Name="sonar.issue.ignore.multicriteria">e1;e2</Property>
+  <Property Name="sonar.issue.ignore.multicriteria.e1.ruleKey">*</Property>
+  <Property Name="sonar.issue.ignore.multicriteria.e1.resourceKey">**/Migrations/*.Designer.cs</Property>
+  <Property Name="sonar.issue.ignore.multicriteria.e2.ruleKey">*</Property>
+  <Property Name="sonar.issue.ignore.multicriteria.e2.resourceKey">**/Migrations/*ModelSnapshot.cs</Property>
+
+  <!-- Excluded from the COVERAGE calculation only — still analysed for issues.
+       Generated migration scaffolding is not meaningfully unit-testable, and leaving it
+       in the denominator pushes the new-code coverage condition around for reasons that
+       have nothing to do with the change under review. -->
+  <Property Name="sonar.coverage.exclusions">**/Migrations/**</Property>
+
+  <!-- Test code is analysed, but duplicated arrange blocks across test files are not a
+       defect worth failing a gate over. Production duplication is still reported. -->
+  <Property Name="sonar.cpd.exclusions">**/tests/**</Property>
+
+  <!-- ===================================================================== -->
+  <!-- Quality gate                                                          -->
+  <!--                                                                       -->
+  <!-- Blocks the `end` step until the server computes the gate, and fails   -->
+  <!-- when it fails. Without it the scan uploads, the job goes green, and   -->
+  <!-- there is effectively no gate.                                         -->
+  <!--                                                                       -->
+  <!-- The THRESHOLDS live in the quality gate definition on the server, not -->
+  <!-- here — a threshold in a file in the repository is a threshold a pull  -->
+  <!-- request can lower.                                                    -->
+  <!-- ===================================================================== -->
+  <Property Name="sonar.qualitygate.wait">true</Property>
+
+</SonarQubeAnalysisProperties>

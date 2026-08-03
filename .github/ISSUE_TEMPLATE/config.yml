@@ -1,0 +1,49 @@
+# Issue template chooser configuration.
+#
+# This file controls what a contributor sees after clicking "New issue" — the
+# template list, and the links below it. It is not itself a template.
+#
+# REPLACE <owner>/<repo> IN EVERY URL BELOW.
+#
+# There is no way to write a repository-relative URL in `contact_links`; GitHub
+# requires an absolute one. The placeholders are here because this file is
+# published in three derived repositories and hard-coding one path would be
+# wrong in the other two. A link left as a placeholder renders as a dead link
+# in the chooser, visible to everyone, on the first issue anybody files.
+
+# Blank issues are disabled deliberately.
+#
+# A blank issue is nearly always a bug report with the useful half missing —
+# no version, no reproduction, no environment — and recovering that costs a
+# round trip and several days. The forms below ask for the missing half up
+# front, while the reporter still has the context in their head.
+#
+# The cost is real: someone with a genuine report that fits neither form has to
+# pick the nearest one. That is the trade being made, knowingly. If it turns out
+# to push people away rather than improve reports, set this back to true.
+blank_issues_enabled: false
+
+contact_links:
+  # Questions are not issues. An issue tracker is a list of work; a question is
+  # a conversation that ends when it is answered and leaves no work behind.
+  # Filing questions as issues buries the actual work under threads that will
+  # never be closed by a commit.
+  #
+  # Discussions must be enabled first: Settings -> General -> Features ->
+  # Discussions. Until then this link 404s.
+  - name: Question, or "how do I do X with this boilerplate"
+    url: https://github.com/<owner>/<repo>/discussions
+    about: >-
+      Ask in Discussions. Usage questions, "is this the intended way", and
+      "should I keep or delete this part" all belong there rather than here.
+
+  # This link exists precisely so nobody has to guess. The private advisory
+  # route is not discoverable if you have never used it, and the obvious
+  # fallback — opening a public issue — is the one action that cannot be
+  # undone.
+  - name: Security vulnerability — DO NOT open a public issue
+    url: https://github.com/<owner>/<repo>/security/advisories/new
+    about: >-
+      Report privately through GitHub Security Advisories. A public issue is a
+      public disclosure, made before anyone has had a chance to fix it. See
+      SECURITY.md for what to include and what is in scope.

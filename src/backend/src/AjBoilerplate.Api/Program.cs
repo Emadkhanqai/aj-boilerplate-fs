@@ -9,6 +9,7 @@ using AjBoilerplate.Infrastructure.Cloud;
 using AjBoilerplate.Infrastructure.Health;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.OpenApi;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -49,6 +50,18 @@ builder.Services.AddExceptionHandler<UnhandledExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    // Named explicitly rather than left to Swashbuckle's default, which is the ASSEMBLY FULL NAME —
+    // "AjBoilerplate.Api, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null". That string is both
+    // an unhelpful API title and a snapshot-churn source: the committed docs/api/openapi.json is
+    // diffed byte for byte by CI, so an assembly version bump would fail the contract gate for a
+    // change that alters no contract at all.
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "AjBoilerplate API",
+        Version = "v1",
+        Description = "Every response is wrapped in the ApiResponse<T> envelope — see ADR-0005.",
+    });
+
     options.OperationFilter<EnvelopeResponseSchemaFilter>();
 
     // Surfaces each endpoint's /// <summary> and DTO property docs. Both this project and
@@ -85,6 +98,9 @@ builder.Services.AddApiCors(builder.Configuration);
 
 // Bearer authentication (Keycloak, or the selected cloud's IdP) + role-based authorization.
 builder.Services.AddApiAuthentication(builder.Configuration);
+
+// Idempotency-Key handling for unsafe requests (see IdempotencyMiddleware, wired below).
+builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection(IdempotencyOptions.SectionName));
 
 // Transactional-outbox dispatcher. A publish failure for one message, or a whole bad tick, never
 // crashes this hosted service; it just retries on the next interval.
@@ -162,6 +178,14 @@ app.UseCors(Cors.FrontendPolicy);
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// Idempotency-Key replay for unsafe requests. AFTER authentication and authorization, and that
+// order is the security property: a key is scoped to the authenticated caller, so the principal must
+// already be resolved — and an unauthorized caller must be rejected before it can claim a key or
+// read back a stored response. Before MapControllers, because it has to buffer the response the
+// endpoint produces.
+app.UseMiddleware<IdempotencyMiddleware>();
+
 app.MapControllers();
 
 // Liveness excludes all dependency checks; readiness runs the "ready"-tagged ones. "/health" is

@@ -120,3 +120,20 @@
     </div>
   }
 </section>
+
+<!-- Unsaved-changes confirmation, raised by `unsavedChangesGuard` on any attempt to leave this
+     route with a dirty form. The app's own dialog, never `window.confirm()` (DESIGN.md §6). -->
+@if (discardPrompt() !== null) {
+  <app-confirm-dialog
+    title="Discard your changes?"
+    [message]="
+      (isEdit() ? 'Your edits to this item' : 'This new item') +
+      ' has not been saved. Leaving now discards it.'
+    "
+    confirmLabel="Discard changes"
+    [danger]="true"
+    data-testid="discard-dialog"
+    (confirm)="answerDiscard(true)"
+    (close)="answerDiscard(false)"
+  />
+}

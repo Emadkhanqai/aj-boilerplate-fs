@@ -95,12 +95,18 @@ class comment, `src/frontend/libs/shared/ui/README.md`, `src/frontend/DESIGN.md`
   signal and the honest price of the exception.
 - Accessibility here is hand-maintained. A future edit can regress the ARIA wiring in a way that no
   library upgrade would have caught for us; only the component's own tests do. This already caught
-  us out once: the stylesheet shipped seven `@keyframes` blocks with no `prefers-reduced-motion`
-  branch — something a themed PrimeNG animation would have handled for us — contradicting the
-  guarantee `DESIGN.md` makes. It now carries one, dropping entrances and stopping the ambient
-  loops while leaving sub-200ms hover feedback alone. Treat that as the standing cost of this
-  decision, not a one-off: every affordance a component library would have given you here is one
-  you own.
+  us out **twice**, and both times the missing piece was one a component library ships by default.
+  First, the stylesheet shipped seven `@keyframes` blocks with no `prefers-reduced-motion` branch —
+  something a themed PrimeNG animation would have handled for us — contradicting the guarantee
+  `DESIGN.md` makes. It now carries one, dropping entrances and stopping the ambient loops while
+  leaving sub-200ms hover feedback alone. Second, `.wn-body` scrolls (`overflow-y: auto`) but was
+  not focusable, so a keyboard-only user could not scroll it and never saw the rest of a long
+  announcement — axe's `scrollable-region-focusable`, WCAG 2.1.1, severity *serious*. It now
+  carries `tabindex="0"` with a resolved name. Note what these two have in common: neither was
+  caught by review, both were caught by the automated suite, and both are things `p-dialog` would
+  simply have been correct about. Treat that as the standing cost of this decision, not a one-off:
+  every affordance a component library would have given you here is one you own, and you will
+  discover which ones only when a checker tells you.
 - If PrimeNG later ships something that fits, we will have a component nobody thinks to revisit.
 
 ### Neutral
@@ -159,7 +165,7 @@ having it solved once, and it needs *a* surface.
 - The exception is honoured while `whats-new-modal.css` is the **only** component stylesheet under
   `src/frontend/libs/`. `find src/frontend/libs -name '*.css'` should return exactly one path; a
   second one means this ADR has quietly become a policy.
-- `npx nx build web --configuration=production` warns at 8 kB and fails at 10 kB per component
+- `npx nx build web --configuration=production` warns at 10 kB and fails at 14 kB per component
   stylesheet, and currently reports no budget warning at all. A warning on any *other* component is
   the signal to re-open ADR-0003, not the budget.
 - The accessibility contract is asserted in

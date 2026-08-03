@@ -136,6 +136,81 @@ jobs:
       - name: nx build web --configuration=production
         run: npx nx build web --configuration=production
 
+      # Bundle sizes, rendered into the job summary AND kept as an artifact.
+      #
+      # The budgets in `apps/web/project.json` only speak up once a threshold is crossed, which
+      # makes the 40 kB a pull request quietly added invisible until the day some later PR trips
+      # the ceiling and gets blamed for all of it. This makes every PR's actual numbers visible
+      # in the checks tab without downloading anything.
+      #
+      # Pure shell over the emitted files — no bundle-analyzer dependency, no second build, no
+      # stats.json. It reads a directory that already exists, so it costs roughly nothing.
+      - name: Bundle size report
+        if: always()
+        shell: bash
+        run: |
+          # Fail loudly. An earlier draft of this step formatted sizes with `numfmt`, which is
+          # GNU-only; where it is absent it prints an error per file and still exits 0, leaving a
+          # neatly formatted table of EMPTY cells. A size report that silently reports nothing is
+          # worse than no size report, because it looks like it worked.
+          set -euo pipefail
+
+          BROWSER_DIR=dist/apps/web/browser
+          if [ ! -d "$BROWSER_DIR" ]; then
+            echo "No build output at $BROWSER_DIR — the build step must have failed."
+            exit 0
+          fi
+
+          # Decimal kB/MB, matching how the Angular builder reports sizes and how the budgets in
+          # apps/web/project.json are evaluated, so the two can be compared without conversion.
+          # Plain awk: portable, and no dependency to install.
+          fmt() {
+            awk -v b="$1" 'BEGIN {
+              if (b >= 1000000) printf "%.2f MB", b / 1000000;
+              else printf "%.1f kB", b / 1000;
+            }'
+          }
+
+          {
+            echo "### Bundle size"
+            echo ""
+            echo "| File | Raw | Gzipped |"
+            echo "| --- | ---: | ---: |"
+          } > bundle-size.md
+
+          total_raw=0
+          total_gz=0
+          # Largest first: the top line is the one worth arguing about.
+          while IFS= read -r file; do
+            raw=$(wc -c < "$file" | tr -d ' ')
+            gz=$(gzip -c "$file" | wc -c | tr -d ' ')
+            total_raw=$((total_raw + raw))
+            total_gz=$((total_gz + gz))
+            printf '| `%s` | %s | %s |\n' "$(basename "$file")" "$(fmt "$raw")" "$(fmt "$gz")" >> bundle-size.md
+          done < <(find "$BROWSER_DIR" -type f \( -name '*.js' -o -name '*.css' \) -exec ls -S {} +)
+
+          printf '| **Total (all emitted JS/CSS)** | **%s** | **%s** |\n' \
+            "$(fmt "$total_raw")" "$(fmt "$total_gz")" >> bundle-size.md
+
+          {
+            echo ""
+            echo "_Gzipped is what a user actually downloads; budgets are enforced on RAW size._"
+            echo "_This total covers every emitted script and stylesheet, so it is larger than the_"
+            echo "_\`initial\` figure the budgets gate on — lazy chunks and static assets are included._"
+            echo "_See \`src/frontend/CLAUDE.md\` for the budgets and their headroom._"
+          } >> bundle-size.md
+
+          cat bundle-size.md >> "$GITHUB_STEP_SUMMARY"
+          cat bundle-size.md
+
+      - name: Upload bundle size report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-bundle-size
+          path: src/frontend/bundle-size.md
+          retention-days: 14
+
       - name: Upload build output
         if: failure()
         uses: actions/upload-artifact@v4
@@ -278,14 +353,16 @@ jobs:
           SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }}
         with:
           projectBaseDir: src/frontend
+          # Everything except the key comes from `src/frontend/sonar-project.properties`,
+          # which the CLI reads automatically from projectBaseDir. Do NOT re-state those
+          # settings here: a `-D` argument OVERRIDES the file, so a stale inline copy
+          # silently wins over the maintained one — which is exactly how local analysis
+          # and CI drift apart while both appear to be configured.
+          #
+          # The key is the one thing passed in, so that a clone of this boilerplate cannot
+          # report into another clone's project by inheriting a committed key.
           args: >
             -Dsonar.projectKey=${{ vars.SONAR_PROJECT_KEY_FRONTEND }}
-            -Dsonar.sources=apps,libs
-            -Dsonar.tests=apps,libs
-            -Dsonar.test.inclusions=**/*.spec.ts
-            -Dsonar.exclusions=**/node_modules/**,**/dist/**,**/coverage/**,**/*.generated.ts
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
-            -Dsonar.qualitygate.wait=true
 
   # --------------------------------------------------------------------------
   # Gate 7 — secret scanning. These repositories are public.

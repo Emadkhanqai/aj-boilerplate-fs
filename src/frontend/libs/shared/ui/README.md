@@ -10,6 +10,7 @@ feature needs it — until then it lives in the feature that owns it.
 | `EmptyStateComponent` | `app-empty-state` | The "nothing here yet" panel body, with an optional action slot. |
 | `WhatsNewModalComponent` | `app-whats-new-modal` | "What's new" feature spotlight, mounted by the shell on every route change. Bespoke markup + CSS — see the exception below. |
 | `QUERY_CLIENT` | — | The shared TanStack `QueryClient`, wired to toast otherwise-unhandled API errors. |
+| `GlobalErrorHandler` | — | The app's `ErrorHandler`, via `provideGlobalErrorHandler()`. Logs with context, reports to the optional `ERROR_MONITOR` seam, and raises a deduplicated toast. Covers what TanStack Query does not: throws from effects, subscribes, and event handlers. |
 
 ## Rules
 

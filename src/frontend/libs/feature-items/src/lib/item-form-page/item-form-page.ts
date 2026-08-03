@@ -20,7 +20,8 @@ import { firstValueFrom } from 'rxjs';
 import { ItemsApiService, apiErrorMessage, isConflictError } from '@aj-boilerplate/data-access/api-client';
 import type { CreateItemRequest, ItemResponse, ItemStatus, UpdateItemRequest } from '@aj-boilerplate/data-access/api-types';
 import { ITEM_STATUSES } from '@aj-boilerplate/data-access/api-types';
-import { DocumentTitleService, sortByLabel } from '@aj-boilerplate/shared/util';
+import { DocumentTitleService, sortByLabel, type UnsavedChangesAware } from '@aj-boilerplate/shared/util';
+import { ConfirmDialogComponent } from '@aj-boilerplate/shared/ui';
 
 /**
  * ============================================================================
@@ -38,15 +39,19 @@ import { DocumentTitleService, sortByLabel } from '@aj-boilerplate/shared/util';
  *   again and clobber the other change.
  * - **PrimeNG only** — `pInputText`, `pTextarea`, `p-select`, `p-button`. No native controls.
  * - The dropdown is searchable and sorted A–Z (`sortByLabel`), the workspace default.
+ * - **Unsaved edits survive a misclick.** The component implements `UnsavedChangesAware`, and
+ *   `unsavedChangesGuard` is attached to both of its routes in `apps/web/src/app/app.routes.ts`.
+ *   The guard asks; this component answers by rendering the app's own `app-confirm-dialog` and
+ *   resolving a promise — never `window.confirm()`.
  */
 @Component({
   selector: 'app-item-form-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, ButtonModule, InputTextModule, TextareaModule, SelectModule, Message],
+  imports: [ReactiveFormsModule, ButtonModule, InputTextModule, TextareaModule, SelectModule, Message, ConfirmDialogComponent],
   templateUrl: './item-form-page.html',
 })
-export class ItemFormPageComponent implements OnInit {
+export class ItemFormPageComponent implements OnInit, UnsavedChangesAware {
   private readonly api = inject(ItemsApiService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
@@ -171,6 +176,44 @@ export class ItemFormPageComponent implements OnInit {
   }
 
   protected cancel(): void {
+    // Deliberately a plain navigation, NOT a bypass. Cancel with a half-typed form is the single
+    // most common way to lose work, so it goes through `unsavedChangesGuard` like every other
+    // way of leaving this route.
     void this.router.navigate(['/items']);
+  }
+
+  // ---- UnsavedChangesAware ------------------------------------------------------------------
+  // `unsavedChangesGuard` (attached to both item routes) calls these. See
+  // `libs/shared/util/src/lib/unsaved-changes.guard.ts` for why the dialog lives here and not
+  // in the guard.
+
+  /** Renders the discard confirmation while set; holds the resolver the dialog's buttons call. */
+  protected readonly discardPrompt = signal<((leave: boolean) => void) | null>(null);
+
+  /**
+   * Dirty means "the user typed something we have not persisted". A successful save calls
+   * `applyItem`, which marks the form pristine before navigating away — so the post-save
+   * redirect never prompts.
+   */
+  hasUnsavedChanges(): boolean {
+    return this.form.dirty;
+  }
+
+  /**
+   * Opens the app's confirmation dialog and resolves once the user answers. The promise is what
+   * the router awaits, which is what lets a themed, non-blocking dialog stand in for
+   * `window.confirm()`'s synchronous return value.
+   */
+  confirmDiscard(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      this.discardPrompt.set(resolve);
+    });
+  }
+
+  /** Answer the discard prompt and tear it down. `leave` is what the guard returns to the router. */
+  protected answerDiscard(leave: boolean): void {
+    const resolve = this.discardPrompt();
+    this.discardPrompt.set(null);
+    resolve?.(leave);
   }
 }

@@ -1,0 +1,216 @@
+# =============================================================================
+# The whole stack, in one command.
+#
+#   cp .env.example .env      # then set MSSQL_SA_PASSWORD
+#   docker compose up --build
+#
+#   web  →  http://localhost:4200
+#   api  →  http://localhost:8080        (OpenAPI UI at /swagger)
+#   health → http://localhost:8080/health/ready
+#
+# Stop and remove the containers, keeping the database:   docker compose down
+# Remove the database volume too (destroys local data):   docker compose down -v
+#
+# ---------------------------------------------------------------------------
+# HOW THIS DIFFERS FROM THE TWO PER-STACK COMPOSE FILES
+#
+# `src/backend/docker-compose.yml` and `src/frontend/docker-compose.yml` still exist and
+# are still the right tool when you are working on one stack and running the other some
+# other way. They join an EXTERNAL network called `app-net` that you have to create by
+# hand first, precisely so that two independent compose projects can find each other.
+#
+# This file does not. It owns every service, so it uses the project's own default network
+# and needs no `docker network create` step and no prerequisites beyond Docker itself.
+# That is the entire point: a full-stack boilerplate whose first command is a three-step
+# setup ritual is not a full-stack boilerplate.
+#
+# Do not run this file and the per-stack files at the same time. They publish the same
+# host ports and they will collide.
+#
+# ---------------------------------------------------------------------------
+# ON THE `migrate` SERVICE
+#
+# The backend's own compose file hides `migrate` behind a `tools` profile so that a plain
+# `up` never applies schema changes. That rule is about DEPLOYED environments, and it is
+# not weakened here: migrations are still a discrete step that must complete successfully
+# before the API starts, never an application-startup side effect inside the API process.
+# What changes locally is only who types it. On the way to production the same step is run
+# by `.github/workflows/deploy.yml`, gated by an environment approval, from a migration
+# bundle built in CI — see `docs/adr/` and the deploy workflow's expand → migrate →
+# contract note.
+#
+# ---------------------------------------------------------------------------
+# CONFIGURATION
+#
+# Everything comes from `.env` (see `.env.example`), which is gitignored. `MSSQL_SA_PASSWORD`
+# is the only variable without a default: SQL Server refuses to start without one, and a
+# committed default password in a public repository is how a boilerplate teaches a bad habit.
+#
+# `.env` is loaded into the `api` container as well, so anything you add there —
+# `Keycloak__*`, `Otlp__Endpoint`, `Smtp__*` — reaches the application without editing this
+# file. The keys set under `environment:` below win over `.env`, because they describe this
+# topology (container hostnames, container ports) rather than your configuration.
+# =============================================================================
+
+name: aj-boilerplate
+
+services:
+  # ---------------------------------------------------------------------------
+  # SQL Server. The schema is owned by EF Core migrations and applied by `migrate`.
+  # ---------------------------------------------------------------------------
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: aj-db
+    restart: unless-stopped
+    environment:
+      ACCEPT_EULA: 'Y'
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env — copy .env.example to .env first}
+      MSSQL_PID: Developer
+    ports:
+      # Published so you can point SSMS, Azure Data Studio, or `dotnet ef` on the host at it.
+      - '${DB_PORT:-1433}:1433'
+    volumes:
+      - db-data:/var/opt/mssql
+    healthcheck:
+      # `sqlcmd` ships in the server image under mssql-tools18; `-C` trusts the container's
+      # self-signed certificate. The doubled `$$` escapes compose interpolation so the shell
+      # inside the container expands the variable, and the password never appears in
+      # `docker compose config` output or in the process list of the host.
+      test:
+        [
+          'CMD-SHELL',
+          '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$$MSSQL_SA_PASSWORD" -Q "SELECT 1" || exit 1',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Redis. Mirrors the managed cache the cloud targets provision. The application
+  # falls back to an in-memory distributed cache when `ConnectionStrings:Redis` is
+  # unset, so this is not load-bearing locally — but without it the cache does not
+  # survive an `api` restart and does not behave like a deployed environment.
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: aj-redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # One-shot: apply EF Core migrations, then exit. `api` will not start until this
+  # has exited 0, so the API never serves a request against a schema that is not there.
+  #
+  # It reuses the backend Dockerfile's `build` stage, which already has the SDK and
+  # `dotnet-ef` installed. The runtime image deliberately does not — shipping the
+  # migration tool inside the application image is how migrations end up being run by
+  # accident in production.
+  # ---------------------------------------------------------------------------
+  migrate:
+    build:
+      context: ./src/backend
+      target: build
+    container_name: aj-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # The design-time factory (`AppDbContextFactory`) reads APP_DB_CONNECTION, NOT
+      # `ConnectionStrings__Default` — `dotnet ef` never starts the application, so it
+      # never reaches Program.cs or DI. See .env.example, section 8.
+      #
+      # IPAddressPreference=IPv4First works around a Microsoft.Data.SqlClient ManagedSni
+      # issue on Linux where connecting by container hostname can fail with "server was
+      # not found" even though the OS resolver and a raw TCP connection both succeed.
+      APP_DB_CONNECTION: 'Server=db;Database=${DB_NAME:-AppDb};User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;'
+    working_dir: /src
+    entrypoint: []
+    # `dotnet-ef`, NOT `dotnet ef`. The two are not interchangeable here.
+    #
+    # `src/backend/.config/dotnet-tools.json` is a LOCAL tool manifest with `isRoot: true`.
+    # Once one exists, `dotnet ef` resolves through it and fails with "Run `dotnet tool
+    # restore` to make the dotnet-ef command available" — even though the Dockerfile
+    # installed dotnet-ef globally and it is sitting on PATH. Invoking the global
+    # executable directly bypasses manifest resolution entirely.
+    #
+    # The alternative, `dotnet tool restore && dotnet ef …`, also works and honours the
+    # version pinned in the manifest — at the cost of the container reaching NuGet every
+    # time it starts. A migration step that needs the network to begin is a migration step
+    # that fails during an incident.
+    command: >
+      dotnet-ef database update
+      --project src/AjBoilerplate.Infrastructure/AjBoilerplate.Infrastructure.csproj
+      --startup-project src/AjBoilerplate.Api/AjBoilerplate.Api.csproj
+    restart: 'no'
+
+  # ---------------------------------------------------------------------------
+  # The API. Named `api` on purpose: `src/frontend/nginx.conf` proxies `/api/` to
+  # `http://api:8080`, so renaming this service breaks the web container silently
+  # (the SPA loads, every request 502s).
+  # ---------------------------------------------------------------------------
+  api:
+    build:
+      context: ./src/backend
+    container_name: aj-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    env_file:
+      # Optional: the stack starts without a `.env` as long as MSSQL_SA_PASSWORD is
+      # exported. Anything you do put there — Keycloak, OTLP, SMTP — reaches the app.
+      - path: .env
+        required: false
+    environment:
+      # These describe the topology, not your configuration, so they override `.env`.
+      ConnectionStrings__Default: 'Server=db;Database=${DB_NAME:-AppDb};User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;'
+      ConnectionStrings__Redis: 'redis:6379'
+      # Enables Swagger UI — Program.cs gates UseSwagger()/UseSwaggerUI() behind IsDevelopment().
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      # gcp | azure — selects the secrets provider and the authN issuer at the composition
+      # root. Neither store is configured here, so `AddCloudSecrets` is a no-op and
+      # configuration falls back to appsettings and these variables.
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gcp}
+    ports:
+      - '${API_PORT:-8080}:8080'
+
+  # ---------------------------------------------------------------------------
+  # The SPA, built and served by nginx, with `/api/` proxied to the `api` service —
+  # same-origin, exactly as a deployed environment behind one hostname would be. That
+  # is why no CORS configuration is needed for this stack.
+  #
+  # `AUTH_MODE=dev` renders the built-in role picker and contacts no identity provider.
+  # Set it to `oidc` in `.env`, along with the three `OIDC_*` values, to authenticate
+  # against a real authority; `docker/40-env.sh` rewrites `env.js` at container start,
+  # so no rebuild is needed to change it.
+  # ---------------------------------------------------------------------------
+  web:
+    build:
+      context: ./src/frontend
+    container_name: aj-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      AUTH_MODE: ${AUTH_MODE:-dev}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_AUTHORITY: ${OIDC_AUTHORITY:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-}
+    ports:
+      - '${WEB_PORT:-4200}:80'
+
+volumes:
+  # Named, so `docker compose down` keeps your local data and only `down -v` destroys it.
+  db-data:

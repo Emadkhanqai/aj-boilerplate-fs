@@ -80,8 +80,12 @@ services:
       APP_DB_CONNECTION: "Server=app-db;Database=AppDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;"
     working_dir: /src
     entrypoint: []
+    # `dotnet-ef`, not `dotnet ef`. Since `.config/dotnet-tools.json` exists with `isRoot: true`,
+    # the `dotnet ef` form resolves through the local tool manifest and fails with
+    # "Run `dotnet tool restore`" even when the global tool is on PATH. Invoking the executable
+    # directly bypasses the manifest lookup and uses the image's installed tool.
     command: >
-      dotnet ef database update
+      dotnet-ef database update
       --project src/AjBoilerplate.Infrastructure/AjBoilerplate.Infrastructure.csproj
       --startup-project src/AjBoilerplate.Api/AjBoilerplate.Api.csproj
     networks:
