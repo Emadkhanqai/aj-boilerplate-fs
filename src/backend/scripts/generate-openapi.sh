@@ -20,7 +20,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-REPO_ROOT="$(cd "${BACKEND_DIR}/../.." && pwd)"
+
+# Ask git for the root rather than counting `..` up from the backend directory. The count is not
+# the same in every repository this script ships to: in the full-stack tree the backend sits at
+# src/backend (two levels down), and in the backend-only repository it IS the root (zero). A
+# hard-coded `../..` silently resolves outside the repository there, and the failure surfaces as
+# "no committed OpenAPI document" — which reads like a missing file rather than a wrong path.
+REPO_ROOT="$(git -C "${BACKEND_DIR}" rev-parse --show-toplevel 2>/dev/null || echo "${BACKEND_DIR}")"
 
 SOLUTION="${BACKEND_DIR}/AjBoilerplate.slnx"
 API_PROJECT="${BACKEND_DIR}/src/AjBoilerplate.Api"
