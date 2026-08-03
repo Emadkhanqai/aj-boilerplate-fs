@@ -79,5 +79,14 @@ fails at startup rather than silently defaulting.
 ## The sample slice
 
 `Item` — entity, use cases, validators, EF configuration, repository, `ItemsController`
-(`/api/v1/items`), the `InitialCreate` migration, and its tests — exists only to prove the path end
-to end. **Delete or rename it on day one.** Every file in it says so.
+(`/api/v1/items`), the `Items` table in the `InitialCreate` migration, and its tests — exists only
+to prove the path end to end. **Delete or rename it on day one.** Every file in it says so.
+
+## The `Features` module (not a sample)
+
+The other module here is the "What's new" feature spotlight: `Features/` at every layer,
+`FeaturesController` (`GET /api/v1/features/unack`, `POST /api/v1/features/ack`), and the
+`AddFeatureAnnouncements` migration, which creates `feat_Features` and `feat_Acknowledgements` and
+**seeds nothing**. It carries no business domain and is meant to stay — shipping an announcement is
+an INSERT-only migration and no code change at all. Full reference:
+[`docs/whats-new.md`](../../docs/whats-new.md).

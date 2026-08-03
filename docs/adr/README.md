@@ -14,10 +14,14 @@ true even after the decision is reversed, because it describes a moment.
 | [0004](0004-openapi-generated-frontend-types.md) | Frontend API types are generated from OpenAPI | Accepted |
 | [0005](0005-apiresponse-envelope-and-status-code-contract.md) | Uniform `ApiResponse<T>` envelope and status-code contract | Accepted |
 | [0006](0006-three-repository-split.md) | Publish as three repositories derived from one tree | Accepted |
+| [0007](0007-bespoke-whats-new-modal.md) | The "What's new" modal is bespoke markup, a bounded exception to PrimeNG-only | Accepted |
 
-These six record the decisions taken when this boilerplate was built. Keep them as history and
-start your own series at `0007`, or delete them and start at `0001` — but pick one and be
+These seven record the decisions taken when this boilerplate was built. Keep them as history and
+start your own series at `0008`, or delete them and start at `0001` — but pick one and be
 consistent.
+
+`0007` bounds `0003` rather than superseding it — worth reading as a pair, since it is the one
+place the PrimeNG rule bends and it says exactly how far.
 
 ## Writing one
 

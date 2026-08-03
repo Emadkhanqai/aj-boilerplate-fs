@@ -382,3 +382,28 @@
   .wn-bullet-title { font-size: 0.9rem; }
   .wn-bullet-desc { font-size: 0.8rem; }
 }
+/* ── Reduced motion ───────────────────────────────────────────
+   DESIGN.md requires animations to honour this preference, and the
+   bespoke-markup exception covers styling, not accessibility. Entrances are
+   dropped rather than shortened, so the panel appears already in its final
+   state; the ambient loops stop entirely, being decorative. Hover and press
+   feedback keeps its sub-200ms transitions — interface response, not the
+   sustained motion this preference exists to suppress.
+   `!important` and flat selectors are deliberate: Angular appends a scoping
+   attribute to every compound, so a descendant selector here would double
+   that overhead and push the component past its style budget. */
+@media (prefers-reduced-motion: reduce) {
+  .wn-backdrop,
+  .wn-panel,
+  .wn-spotlight,
+  .wn-spotlight-glow,
+  .wn-conf {
+    animation: none !important;
+  }
+
+  .wn-close:hover,
+  .wn-bullet:hover,
+  .wn-dot:hover {
+    transform: none;
+  }
+}

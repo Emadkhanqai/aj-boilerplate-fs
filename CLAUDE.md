@@ -17,8 +17,14 @@ A runnable starting point for a new product: a .NET layered Clean Architecture A
 Angular + Nx + PrimeNG web app, an OpenAPI contract that generates the frontend's types, a
 quality gate, IaC for two cloud providers, and a committed `.claude/` harness.
 
-It contains **no business domain**. The single sample entity, `Item`, exists to prove the whole
-path end to end and is designed to be deleted on day one.
+It contains **no business domain**. Two modules ship, and they are not the same kind of thing:
+
+- **`Item`** — the sample entity. It exists to prove the whole path end to end and is designed
+  to be deleted on day one.
+- **`Features`** — the "What's new" feature spotlight: shows each user a newly shipped feature
+  once, the first time they hit a URL prefix bound to it, with acknowledgement stored per user
+  server-side. Domain-free, and meant to be kept. Adding an announcement is an INSERT-only
+  migration — no service change, no frontend change. Full reference: [docs/whats-new.md](docs/whats-new.md).
 
 ## Making it yours (do this first)
 
@@ -30,10 +36,12 @@ path end to end and is designed to be deleted on day one.
    library `package.json`/`project.json`, and all import statements. Rename the `web` app if
    you want a different name.
 3. **Sample entity** — delete or rename `Item` end to end: domain entity, handlers, DTOs, EF
-   configuration + the `InitialCreate` migration, controller, OpenAPI paths, generated types,
-   and the `feature-items` library. Delete its tests with it; keep the architecture tests.
+   configuration, the `Items` table in the `InitialCreate` migration, controller, OpenAPI paths,
+   generated types, and the `feature-items` library. Delete its tests with it; keep the
+   architecture tests. Leave the `Features` module and `AddFeatureAnnouncements` alone — they
+   carry no domain and are not part of the sample slice.
 4. **Docs** — replace `README.md`, fill in `src/frontend/DESIGN.md` before any UI work, and
-   start your own ADR series (keep ours as `0001`–`0006` history or delete them).
+   start your own ADR series (keep ours as `0001`–`0007` history or delete them).
 5. **Infra** — pick your provider, set project/subscription variables, configure a remote
    state backend, and delete the tree you are not using.
 
@@ -75,6 +83,11 @@ src/frontend/
     ├── shell/                 layout, sidebar, top bar, nav
     └── feature-items/         the sample feature
 ```
+
+Both shipped modules are foldered the same way at every backend layer — `Items/` next to
+`Features/` — so a third one has an obvious shape to copy. On the frontend the spotlight is
+split across `shared/ui` (the modal), `data-access/api-client` (the gateway), `shared/util`
+(`LanguageService`), and `shell` (the wiring), because it belongs to no feature area.
 
 **The layer dependency rule.** Dependencies point inward, one direction only:
 
@@ -193,7 +206,9 @@ duplicates a server type — change the contract, regenerate, then use it. `/syn
 **Frontend.** Standalone components, signals first, `inject()` over constructor injection,
 `OnPush` everywhere, strict TypeScript, no `any`. PrimeNG is the only component library —
 no native `<input>`, `<select>`, `<button>`, or `<table>` in feature code. Dropdowns are
-filterable and sorted A–Z by default.
+filterable and sorted A–Z by default. Exactly one component is exempt, on the record and by
+name: `libs/shared/ui/src/lib/whats-new-modal` — see
+[ADR-0007](docs/adr/0007-bespoke-whats-new-modal.md). It is not precedent for anything else.
 
 **Tests.** Failing test first, then the code. Unit tests for domain and handler logic,
 integration tests for anything crossing a boundary, Playwright for critical journeys.
@@ -240,6 +255,7 @@ integration tests for anything crossing a boundary, Playwright for critical jour
 | Definition of Done | [docs/definition-of-done.md](docs/definition-of-done.md) |
 | Day-1 checklist | [docs/onboarding.md](docs/onboarding.md) |
 | Spec template | [docs/specs/TEMPLATE.md](docs/specs/TEMPLATE.md) |
+| The "What's new" module, end to end | [docs/whats-new.md](docs/whats-new.md) |
 | Architecture decisions | [docs/adr/](docs/adr/) |
 | API contract workflow | [docs/api/README.md](docs/api/README.md) |
 | Session handoffs | [docs/handoff/](docs/handoff/) |

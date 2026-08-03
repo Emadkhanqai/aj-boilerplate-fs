@@ -13,6 +13,7 @@ has already dismissed which — so a client only has to ask "anything to show he
 - [The API](#the-api)
 - [Data model](#data-model)
 - [Where the code lives](#where-the-code-lives)
+- [The client side](#the-client-side)
 - [Adding an announcement (the day-2 workflow)](#adding-an-announcement-the-day-2-workflow)
 - [Retiring an announcement](#retiring-an-announcement)
 - [The two non-obvious correctness details](#the-two-non-obvious-correctness-details)
@@ -44,8 +45,9 @@ widest policy, satisfied by every recognised role.
 
 ### `GET /api/v1/features/unack?path=/reports/monthly`
 
-Announcements to show, ordered by `DisplayOrder` then `CreatedAt`. An empty array means "nothing to
-show" — the normal answer.
+Announcements to show, ordered by `DisplayOrder` then `CreatedAt` — with `Id` as a final tiebreak,
+so two announcements written in the same tick with the same order still come back in a stable
+sequence. An empty array means "nothing to show", and it is the normal answer.
 
 ```jsonc
 {
@@ -139,6 +141,66 @@ The Application layer returns its own `FeatureAnnouncementDto`; the Api maps it 
 `FeatureAnnouncementResponse`. That is not ceremony — the architecture tests forbid Application from
 referencing Contracts, so a breaking wire change cannot ripple into the use cases.
 
+Covered by `FeaturePathTests`, `FeatureAnnouncementTests`, and `FeatureAnnouncementServiceTests` in
+`AjBoilerplate.UnitTests`, and end to end by `Api/FeaturesApiTests.cs` in
+`AjBoilerplate.IntegrationTests`.
+
+---
+
+## The client side
+
+Nothing above assumes a particular client — the API is the whole contract. This repository's Angular
+app is one implementation of it, in four pieces, none of which live in a feature library:
+
+| Piece | Path (under `src/frontend/`) | Responsibility |
+|---|---|---|
+| Gateway | `libs/data-access/api-client/src/lib/feature-announcements-api.service.ts` | `unack(path)` and `ack(ids)`. A null envelope payload becomes `[]`, so no caller writes a null check. |
+| Modal | `libs/shared/ui/src/lib/whats-new-modal/` | The carousel: hero band, benefit cards, pagination dots. |
+| Language | `libs/shared/util/src/lib/language.service.ts` | `pick(en, ar)` — chooses a paired field for the current locale, falling back rather than rendering a blank. |
+| Wiring | `libs/shell/src/lib/app-layout/app-layout.ts` | Calls `unack` on every `NavigationEnd`; posts `ack` on dismiss. |
+
+**Why the shell.** The lookup has to run on every route change whatever page is mounted, and one
+announcement can be scoped to several unrelated pages. Mounting it once in the authenticated layout
+means every page is covered with no per-page work, and no feature library knows the module exists.
+
+**Body conventions.** The server sends plain text and never interprets it. This client chooses to
+read a light markdown, which is a client decision another client is free to ignore:
+
+```text
+Set up a list the way you like it once, then jump back to it from the sidebar.
+
+- 🔖 Saved views — pin any combination of filters and sorting under a name you choose
+- ⚡ Instant search — results narrow as you type
+```
+
+A line starting `- ` becomes a tinted benefit card; a leading emoji becomes its icon, and the first
+spaced em dash (` — `) splits the card title from its description. Every other non-empty line
+becomes a centred paragraph. Blank lines separate and render nothing.
+
+**Two client behaviours that look like bugs.**
+
+1. **The backdrop is inert.** `onBackdrop()` is an empty method with a comment saying so.
+   Acknowledgement is permanent and applies on every device, so it may only be written on an
+   explicit "Got it" or close — a stray click outside the panel is not "I have read this".
+2. **The pending list is never cleared on success.** The lookup only ever *sets* a non-empty
+   result. A fast double-navigation can land a newer, empty response while the modal is open, and
+   clearing on it would blink an open modal away mid-read. The list is cleared in exactly one
+   place — `onWhatsNewClosed`, on a deliberate dismiss — which clears first and *then* POSTs, so a
+   failed `ack` still leaves the popup closed and the server simply re-offers it later.
+
+Both the lookup and the acknowledgement fail silently. A feature popup is non-critical UX; a toast
+about it would be worse than the failure.
+
+**Offline demo.** `apps/web/src/mocks/handlers.ts` answers both endpoints with one sample
+announcement, so `npx nx serve web --configuration=demo` shows the spotlight with no backend and no
+database. That sample is a **browser mock, not seed data** — see
+[What is deliberately not here](#what-is-deliberately-not-here). Its acknowledgement set is
+in-memory, so a reload replays the announcement, which is what makes the demo deterministic.
+
+The modal is the codebase's one sanctioned exception to the PrimeNG-only rule: bespoke markup and a
+bespoke stylesheet, with only its icons from PrimeIcons. The reasoning and the costs are in
+[ADR-0007](adr/0007-bespoke-whats-new-modal.md).
+
 ---
 
 ## Adding an announcement (the day-2 workflow)
@@ -201,7 +263,8 @@ with it.
 
 ## The two non-obvious correctness details
 
-Do not "simplify" either of these.
+Do not "simplify" either of these. Two more live on the client, for the same reason — see
+[The client side](#the-client-side).
 
 ### 1. The path-traversal guard in `FeaturePath.Normalize`
 
@@ -232,11 +295,18 @@ constraint doing real work, not a duplicate of the application check.
 
 ## What is deliberately not here
 
-- **No seed row.** The schema migration creates the two tables and nothing else. An empty
-  announcements table is the correct state for a fresh clone.
+- **No seed row.** `20260803100548_AddFeatureAnnouncements` creates `feat_Features`,
+  `feat_Acknowledgements`, and their four indexes — and inserts nothing. An empty announcements
+  table is the correct state for a fresh clone, and the module is simply silent until a later
+  migration adds a row. The sample announcement in `apps/web/src/mocks/handlers.ts` is a **browser
+  mock for the offline demo build, not seed data**: it never reaches a database, and deleting it
+  changes nothing about a real deployment. Do not conflate the two — a "sample" row in a schema
+  migration is exactly the thing this design avoids, because it would appear in every environment
+  the migration is applied to, including production.
 - **No write API.** Announcements arrive by migration. Adding a create endpoint would mean building
   an authoring UI, an approval path, and an audit trail for what is a handful of rows a year.
 - **No per-browser storage.** See [How it behaves](#how-it-behaves).
 - **No rendering opinion.** The API returns text and lets the client decide how to present it. The
   body is plain text; a client may adopt its own light-markup conventions, and the server will not
-  interpret them either way.
+  interpret them either way. The ones this repository's Angular app uses are in
+  [The client side](#the-client-side).

@@ -5,7 +5,7 @@
 **Deciders:** <names>
 **Supersedes:** — | [ADR-ZZZZ](ZZZZ-....md)
 
-> One file per decision. Number them sequentially: `0007-short-slug.md`. Never rewrite history
+> One file per decision. Number them sequentially: `0008-short-slug.md`. Never rewrite history
 > — a decision that turned out wrong gets a *new* ADR that supersedes it, and this one is marked
 > `Superseded`. An ADR records why a choice was made at a point in time; that record stays true
 > even when the choice stops being.

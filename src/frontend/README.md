@@ -14,7 +14,9 @@ npx nx serve web --configuration=demo   # runs offline against MSW mocks — no 
 ```
 
 Open http://localhost:4200. The `demo` configuration ships a role picker instead of a real
-identity provider — pick any of the three sample users.
+identity provider — pick any of the three sample users. It also mocks one "What's new"
+announcement, so the feature spotlight appears on the first route you land on; that sample lives in
+`apps/web/src/mocks/handlers.ts` and is a mock, not seed data.
 
 To run against a real backend instead:
 
@@ -34,9 +36,9 @@ container equivalent).
 | `libs/auth` | Session, route guards, role -> capability map |
 | `libs/data-access/api-types` | **Generated** from OpenAPI. Never hand-edited. |
 | `libs/data-access/api-client` | The only code that talks HTTP |
-| `libs/shared/ui` | Presentational components |
-| `libs/shared/util` | Formatters and helpers |
-| `libs/shell` | Sidebar, top bar, layout, navigation config |
+| `libs/shared/ui` | Presentational components, including the "What's new" spotlight modal |
+| `libs/shared/util` | Formatters and helpers, plus `LanguageService` |
+| `libs/shell` | Sidebar, top bar, layout, navigation config — and the "What's new" wiring |
 | `libs/feature-items` | **Sample feature** — read it, copy its shape, then delete it |
 
 ## Commands

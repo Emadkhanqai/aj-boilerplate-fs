@@ -29,4 +29,9 @@ cover accessibility: the component carries `role="dialog"`, `aria-modal`, `aria-
 labelled close button, and `role="tab"`/`aria-selected` dots itself, precisely because there is no
 PrimeNG component supplying them. Do not treat it as precedent — the next bespoke-looking request
 is still PrimeNG-only until someone argues this case again.
+
+The full reasoning, the alternatives, and the costs — including the raised `anyComponentStyle`
+budget — are recorded in
+[ADR-0007](../../../../../docs/adr/0007-bespoke-whats-new-modal.md). What the component is *for* is
+in [`docs/whats-new.md`](../../../../../docs/whats-new.md).
 - No `HttpClient`, no routing decisions, no feature imports.

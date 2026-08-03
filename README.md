@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/banner.png" width="900" alt="Al Jazeera Media &amp; Emerging Platforms engineering banner. Large headline reading &quot;Clone. Spec. Ship.&quot; over the line &quot;A full-stack boilerplate that specs, tests and ships itself&quot;, with .NET 10, Angular, SQL Server and Docker tags beneath it. To the right, a Claude Code terminal panel shows a spec-driven run: a /spec command, a model tier badge, ticked unit and integration test runs, a concurrency-conflict check against a real database, and a green &quot;Quality gate PASSED&quot; line.">
+
 # Agentic Full-Stack Boilerplate
 
 **A .NET 10 + Angular 21 starting point that ships with its own engineering guardrails.**
@@ -19,16 +21,17 @@
 
 Most "starter templates" give you a folder structure and leave the hard parts — layering that
 actually holds, an API contract the frontend can trust, a quality gate that blocks bad merges,
-infrastructure you can read — as an exercise. This one ships those parts working, with a single
-sample entity proving the whole path end to end.
+infrastructure you can read — as an exercise. This one ships those parts working, with a sample
+entity proving the whole path end to end.
 
 It is also built to be driven by [Claude Code](https://claude.com/claude-code). A `.claude/`
 harness ships **committed, not gitignored**: hooks that format on save, block dangerous shell
 commands, protect sensitive files, run the affected tests, scan for secrets, and gate a push on
 the quality gate — plus slash commands for the recurring work.
 
-It contains **no business domain**. The one sample entity, `Item`, is designed to be deleted on
-your first day.
+It contains **no business domain**. The sample entity, `Item`, is designed to be deleted on your
+first day. The other module that ships — the ["What's new" feature spotlight](docs/whats-new.md)
+— is not a sample and is meant to stay: it is domain-free plumbing every product ends up wanting.
 
 ## Why it exists
 
@@ -49,8 +52,14 @@ without forking the codebase. Those decisions are made here, written down as
   OpenAPI document. Hand-written DTOs on the client are a bug. See [docs/api/](docs/api/).
 - **Angular 21 + Nx + PrimeNG** — standalone components, signals, `OnPush`, strict TypeScript,
   library boundaries enforced by Nx tags, PrimeNG as the only component library.
-- **EF Core migration workflow** — MSSQL, migration-based, with exactly one `InitialCreate` in
-  the box so the workflow is demonstrated rather than described.
+- **A "What's new" feature spotlight** — a popup that shows each user a newly shipped feature
+  exactly once, the first time they land on a URL prefix it is bound to. Acknowledgement is
+  server-side per user, so it survives cleared browser storage and other devices, and several
+  pending announcements chain into one carousel. Shipping the next one is an INSERT-only
+  migration and no code at all. See [docs/whats-new.md](docs/whats-new.md).
+- **EF Core migration workflow** — MSSQL, migration-based, with two migrations in the box
+  (`InitialCreate` and `AddFeatureAnnouncements`) so the workflow is demonstrated rather than
+  described.
 - **Two clouds, one switch** — `CLOUD_PROVIDER=gcp|azure` selects the secrets provider and the
   identity issuer at the composition root, and selects which `infra/` tree deploys. Terraform
   for GCP, Bicep for Azure, provisioning the same logical shape.
@@ -88,7 +97,7 @@ export CLOUD_PROVIDER=gcp          # or: azure
 export ConnectionStrings__Default='Server=localhost,1433;Database=AjBoilerplate;User Id=sa;Password=<your-local-password>;TrustServerCertificate=True;'
 export ConnectionStrings__Redis='localhost:6379'
 
-# 3 — database. Apply the single InitialCreate migration.
+# 3 — database. Apply the migrations (InitialCreate, then AddFeatureAnnouncements).
 dotnet tool install --global dotnet-ef
 dotnet ef database update \
   --project        src/backend/src/AjBoilerplate.Infrastructure \
@@ -112,6 +121,10 @@ trip exercises the Angular feature library, the generated API types, the control
 handler, the repository, and the migration you just applied. (Routes are guarded, so you will
 be asked to sign in first once you have pointed the app at your identity provider and Keycloak
 realm.)
+
+No backend to hand? `npx nx serve web --configuration=demo` swaps in the MSW worker and serves
+the app against in-browser mocks — including one sample announcement, so the "What's new"
+spotlight is visible without a database. Those mocks are demo fixtures, not seed data.
 
 Then verify the gate is green before you change anything:
 
@@ -138,7 +151,9 @@ Full command reference: [CLAUDE.md](CLAUDE.md).
 │   ├── specs/             feature specs (+ template)
 │   ├── api/               how the OpenAPI contract is produced and consumed
 │   ├── handoff/           session handoffs written by the Stop hook
+│   ├── assets/            images referenced by the docs
 │   ├── architecture.md    every layer and library, and why each boundary exists
+│   ├── whats-new.md       the feature-spotlight module, end to end
 │   ├── onboarding.md      Day-1 checklist
 │   ├── workflow.md        Spec → Plan → Execute → Verify → Review, with diagrams
 │   └── definition-of-done.md

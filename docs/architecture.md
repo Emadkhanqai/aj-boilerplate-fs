@@ -3,8 +3,14 @@
 A layer-by-layer tour of the repository, written for someone who cloned it ten minutes ago.
 
 Every layer below is described the same way: **what it is for**, **what may live there**, **what
-may not**, **what it depends on**, **a concrete example from the sample `Item` slice with real
-file paths**, and **the mistake newcomers actually make** with it.
+may not**, **what it depends on**, **a concrete example with real file paths**, and **the mistake
+newcomers actually make** with it.
+
+Two modules ship, and the examples draw on both. `Item` is the sample slice — it proves the path
+end to end and is meant to be deleted on day one. `Features`, the ["What's new" feature
+spotlight](whats-new.md), is domain-free plumbing that is meant to stay; it appears at every layer
+alongside `Items/`, so the two together show what a second module looks like rather than leaving
+you to guess.
 
 The short version: dependencies point inward, the wire contract is a separate thing from the
 domain model, and both rules are enforced by tests rather than by good intentions.
@@ -170,6 +176,22 @@ complete example of the house style, not a stub:
 - length limits as constants (`Item.MaxNameLength`, `Item.MaxDescriptionLength`) that the EF
   configuration and the request validators both read, so all three cannot drift
 
+**In the `Features` module.** `Features/FeatureAnnouncement.cs` is an aggregate with no write API
+at all: announcements arrive as data, so it exposes `Create` plus `Retire`/`Reinstate` and nothing
+else. `Features/FeatureAcknowledgement.cs` is one user's dismissal of one announcement — the row's
+existence *is* the mechanism.
+
+`Features/FeaturePath.cs` is the piece worth reading twice. Page targeting is a prefix comparison,
+and a prefix comparison against an unresolved path is exploitable: `/reports/../admin` literally
+starts with `/reports`, so an announcement scoped to the reports area would fire on what actually
+resolves to `/admin`. `Normalize` therefore drops the query string and fragment and resolves `.`
+and `..` on a stack (which can never walk above the root) *before* any comparison, and
+`FeatureAnnouncement.Targets` calls it itself rather than trusting a caller to have done so. It is
+a security control that happens to look like string formatting — do not "simplify" it. A second
+deliberate behaviour lives next to it: an empty page list matches every route, and a `PagesJson`
+value the parser cannot read degrades to the same rather than throwing, because this runs on a
+read-only lookup fired on every navigation and one bad row must not 500 every page for every user.
+
 **The common mistake.** Reaching for a framework "just for this one thing" — a `[Required]`
 attribute, an `IQueryable`, a `DateTime.UtcNow`. The moment the Domain has a package reference, it
 stops being independently testable and every rule in it becomes hostage to a framework upgrade.
@@ -185,7 +207,8 @@ does not know how anything is stored or transported.
 
 **May live here**
 
-- Use-case services and their interfaces — `Items/ItemService.cs` and `IItemService`
+- Use-case services and their interfaces — `Items/ItemService.cs` and `IItemService`,
+  `Features/FeatureAnnouncementService.cs` and `IFeatureAnnouncementService`
 - **Ports**: interfaces the outer layers implement. `Abstractions/` holds `IClock`,
   `ICurrentActor`, `ICorrelationContext`, `IEmailSender`, `ISecretsProvider`,
   `IOutboxRepository`, `IInboxRepository`, `IIntegrationEventPublisher`, `IEntityIdCodec`;
@@ -229,6 +252,30 @@ of the use case is validated — including one that never arrived over HTTP. It 
 worth copying: a missing or malformed `RowVersion` is a 400 (a client bug), never a 409, because a
 409 would tell the user someone else had edited the record when nobody had.
 
+**In the `Features` module.** `Features/FeatureAnnouncementService.cs` has two use cases and three
+decisions in it worth copying.
+
+*Idempotency is computed here, not caught from the database.* `AcknowledgeAsync` reads which of the
+requested ids this user already acknowledged and inserts only the remainder, so a double-click or a
+retried request writes nothing and succeeds — instead of raising a unique-constraint violation that
+would have to be caught, classified by SQL error number, and translated back into the success it
+always was. The unique index on `(UserId, FeatureId)` stays as the backstop for the one case an
+application check cannot cover: two requests racing past it at the same instant.
+
+*An id naming no announcement is dropped rather than inserted*, because the foreign key would
+otherwise reject the whole batch — including in a legitimate race, where an announcement was
+deleted between the lookup that handed the client these ids and the dismissal that sends them back.
+
+*Page matching runs in memory, on purpose.* `GetUnacknowledgedAsync` asks the port for the active
+set (already ordered by the index that exists for it), then filters with `Targets`. Resolving a
+caller's path and comparing it against a JSON array of prefixes is work SQL Server would do badly
+and could not index anyway. `RequireAuthenticatedUser` refuses `anonymous`/`system` actor ids even
+though the endpoint policy already rejects them — acknowledgement is recorded per user, and
+attributing rows to a shared pseudo-identity would mark an announcement dismissed for everyone.
+
+`Features/FeatureValidators.cs` bounds the path at 2048 characters and the id batch at 200, and
+treats an **empty** id list as valid: dismissing nothing is a successful no-op, not a client error.
+
 **The common mistake.** Putting the business rule in the service instead of the entity. If
 `ItemService` had checked `if (item.Status == ItemStatus.Archived) throw`, the rule would apply only
 to that one code path. It lives in `Item.Update` so it applies to every caller forever. The second
@@ -245,7 +292,8 @@ boundary, and the OpenAPI document is generated from them.
 **May live here**
 
 - Request and response records — `Items/ItemContracts.cs` holds `ItemResponse`,
-  `CreateItemRequest`, `UpdateItemRequest`
+  `CreateItemRequest`, `UpdateItemRequest`; `Features/FeatureContracts.cs` holds
+  `FeatureAnnouncementResponse` and `AcknowledgeFeaturesRequest`
 - The envelope — `Common/ApiResponse.cs` (generic and non-generic) and `Common/PagedResponse.cs`
 - `Common/EnvelopeCodes.cs`: the stable `code` slugs a client branches on
 - XML documentation comments, which become the descriptions in the generated OpenAPI document.
@@ -264,6 +312,14 @@ boundary, and the OpenAPI document is generated from them.
 `ItemResponse.RowVersion` is a base64 `string`, while the Application layer's `ItemDto.RowVersion`
 is a `byte[]`; the controller converts between them. That is the pattern in miniature — the wire
 shape is chosen for clients, the internal shape for correctness, and one place maps between them.
+
+**In the `Features` module.** `Features/FeatureContracts.cs` publishes `FeatureAnnouncementResponse`
+— which deliberately omits `PagesJson` and `IsActive`. Page targeting and activation are decisions
+the server makes; a client that could see them would eventually re-implement the matching, and the
+prefix list is not information a browser needs. `AcknowledgeFeaturesRequest.FeatureIds` is nullable
+on the wire, and `FeaturesController` coalesces it to an empty list — so a body that omits the
+property acknowledges nothing and answers 204, which is what "dismiss these zero announcements"
+should do.
 
 **The common mistake.** Returning the EF entity because it "has the same fields". It does not:
 it has navigation properties that serialise into loops or over-fetch, private setters that model
@@ -316,6 +372,34 @@ rows.
 re-labels Kind on the way in and out. New timestamps should prefer `DateTimeOffset`, which
 round-trips unambiguously — the sample `Item` does.
 
+**In the `Features` module.** `Persistence/FeatureAnnouncementRepository.cs` and the two
+configurations under `Persistence/Configurations/` map the **second set of tables** in the schema,
+`feat_Features` and `feat_Acknowledgements`, created by
+`Persistence/Migrations/20260803100548_AddFeatureAnnouncements.cs`.
+
+That migration creates the two tables and their four indexes and **nothing else — there is no seed
+row**, and an empty announcements table is the correct state for a fresh clone. Each announcement
+ships afterwards as its own INSERT-only migration; no service, controller, or frontend change is
+ever needed to add one. (The demo build shows a sample announcement, but that comes from the MSW
+handler in `apps/web/src/mocks/handlers.ts` — a browser mock, not seed data.)
+
+Three mapping decisions carry the module's correctness:
+
+- `IX_feat_Acknowledgements_User_Feature` is **unique** on `(UserId, FeatureId)`. It is a
+  correctness constraint rather than tuning — it is what makes a dismissal permanent and
+  un-duplicable when two requests race past the service's own idempotency check, and it is the
+  index the "has this user seen it?" lookup seeks on.
+- `UserId` is `nvarchar(128)` with **no foreign key**. `Actor.Id` is an external IdP subject claim,
+  not a local key and not a GUID; users do not live in this schema, so there is nothing to
+  reference.
+- `IX_feat_Features_Active_Order` covers the hot path exactly — filter on `IsActive`, order by
+  `DisplayOrder` — because that lookup runs on every navigation of every signed-in client. The
+  repository adds `Id` as a final tiebreak so two announcements created in the same tick with the
+  same order still come back in a stable sequence.
+
+Deleting an announcement cascades to its acknowledgements: they mean nothing without it, and
+leaving them would either block the delete or strand orphan rows.
+
 **The common mistake.** Letting a query decide policy. "The repository filters out archived items"
 sounds harmless until a second caller needs them and the rule is invisible from the use case. Ports
 return data; use cases decide. The other recurring mistake is `EnsureCreated()` — the schema here
@@ -331,7 +415,7 @@ cross-cutting middleware.
 
 **May live here**
 
-- Thin controllers — `Controllers/ItemsController.cs`
+- Thin controllers — `Controllers/ItemsController.cs`, `Controllers/FeaturesController.cs`
 - The composition root, `Program.cs`
 - Cross-cutting middleware and filters under `Infrastructure/`: the exception handlers, the
   envelope result filter, the status-code pages, security headers, rate limiting, CORS,
@@ -349,8 +433,8 @@ cross-cutting middleware.
 
 **Depends on.** `Application`, `Infrastructure`, `Contracts` — and deliberately **not** `Domain`.
 
-**In the sample slice.** `src/backend/src/AjBoilerplate.Api/Controllers/ItemsController.cs` is the
-only controller that ships. Everything about it is intentional:
+**In the sample slice.** `src/backend/src/AjBoilerplate.Api/Controllers/ItemsController.cs` is one
+of the two controllers that ship. Everything about it is intentional:
 
 - `[Route("api/v1/items")]` — versioned from day one, as `Every_controller_route_is_versioned` requires
 - `[Authorize(Policy = Policies.ReadAccess)]` on the class, `[Authorize(Policy = Policies.WriteAccess)]`
@@ -363,6 +447,23 @@ only controller that ships. Everything about it is intentional:
   only as good as its annotations and a client generated from a happy-path-only document has no
   idea how the endpoint fails
 
+**In the `Features` module.** `Controllers/FeaturesController.cs` exposes exactly two endpoints:
+
+| Endpoint | Answers | Policy |
+|---|---|---|
+| `GET /api/v1/features/unack?path=/reports/monthly` | `200` with the announcements this user has not dismissed whose page list matches — an empty array is the normal answer | `Policies.ReadAccess` |
+| `POST /api/v1/features/ack` | `204` with no body; idempotent | `Policies.ReadAccess` |
+
+Both sit on `ReadAccess` — the widest policy, satisfied by every recognised role — and that is the
+deliberate part. Dismissing writes a row about the **caller**, not about a business record, so it
+is not a write privilege: a read-only user must still be able to close the popup. Putting `ack`
+behind `WriteAccess` would leave viewers staring at a modal they cannot clear.
+
+The controller does nothing else. It hands the query straight to the service, maps
+`FeatureAnnouncementDto` to `FeatureAnnouncementResponse`, and lets `EnvelopeResultFilter` wrap
+both. Path canonicalisation is **not** done here — it happens in the Domain, where it cannot be
+bypassed by a second caller (see [`AjBoilerplate.Domain`](#ajboilerplatedomain)).
+
 **The common mistake.** Doing work in the controller. The tell is a `try`/`catch` — if an action
 catches an exception to shape a response, it is duplicating the handler chain and will drift from
 it. The other classic is adding a `using AjBoilerplate.Domain...` to "just map the enum", which
@@ -372,11 +473,15 @@ breaks the build at the architecture test rather than at review, which is exactl
 
 ### The three test projects
 
-| Project | What it proves | Needs |
-|---|---|---|
-| `AjBoilerplate.UnitTests` | Domain invariants, use-case branches, validators, mappers, the claims and role tables, the log sanitizer, the id codec | nothing |
-| `AjBoilerplate.IntegrationTests` | The real request path end to end against a real SQL Server | Docker |
-| `AjBoilerplate.ArchitectureTests` | The dependency rule and the controller conventions | nothing |
+| Project | Tests | What it proves | Needs |
+|---|---|---|---|
+| `AjBoilerplate.UnitTests` | 185 | Domain invariants, use-case branches, validators, mappers, the claims and role tables, the log sanitizer, the id codec | nothing |
+| `AjBoilerplate.IntegrationTests` | 51 | The real request path end to end against a real SQL Server | Docker |
+| `AjBoilerplate.ArchitectureTests` | 9 | The dependency rule and the controller conventions | nothing |
+
+245 backend tests in total, alongside 178 on the frontend (`npx nx run-many -t test --all`). Treat
+those figures as a snapshot, not a target — `dotnet test src/backend/AjBoilerplate.slnx` prints the
+current ones.
 
 The integration suite is worth understanding before you write your first test.
 `Support/SqlServerFixture.cs` starts **one** throwaway SQL Server container
@@ -1000,9 +1105,16 @@ the boundary rule forbids it, which is precisely why the DI seams exist.
 | `src/lib/auth-interceptor.ts` | Attaches `Authorization: Bearer …`; on a 401 for a request that *carried* a token, attempts one refresh and retries exactly once, then fires the session-expired notifier |
 | `src/lib/api-error.ts` | `ApiError` plus `isConflictError`, `conflictData`, and `apiErrorMessage` — one shared implementation so every `onError` reports a conflict identically |
 | `src/lib/items-api.service.ts` | **SAMPLE** — the per-feature service pattern: one injectable, typed methods over `HttpClient`, versioned paths only, no manual envelope handling |
+| `src/lib/feature-announcements-api.service.ts` | The "What's new" gateway: `unack(path)` and `ack(ids)`. `unack` coalesces a null envelope payload to `[]`, so no caller writes a null check for "nothing pending" |
 
 `apiErrorMessage` always returns the same distinct copy for a 409 regardless of the caller's
 fallback, because "reload and look again" is the only correct next step for a stale-record conflict.
+
+One honest wart lives in this library and is flagged in the file itself:
+`feature-announcements-api.service.ts` **declares** the `FeatureAnnouncement` interface locally,
+because the announcements endpoints are not in the checked-in OpenAPI document yet. It is a
+temporary exception to "never hand-write a server type", not a licence — once the document covers
+them, regenerate `api-types`, delete the local interface, and import the generated one.
 
 **The common mistake.** Writing `response.data` in a feature component. The interceptor already
 unwrapped it; if you see `.data` outside this library, something is bypassing the interceptor. The
@@ -1046,9 +1158,9 @@ moves. The second mistake is believing the guard *is* the permission.
 
 > **Note on `/api/v1/me`.** The OIDC provider fetches a `UserProfile` from `GET /api/v1/me`, and
 > `libs/auth/README.md` lists implementing that endpoint as step 2 of wiring a real identity
-> provider. The backend in this repository ships only `ItemsController`, so that endpoint does not
-> exist yet — you add it, then replace the hand-written `UserProfile` interface with the generated
-> type.
+> provider. The backend in this repository ships `ItemsController` and `FeaturesController` and
+> nothing else, so that endpoint does not exist yet — you add it, then replace the hand-written
+> `UserProfile` interface with the generated type.
 
 ---
 
@@ -1058,7 +1170,7 @@ moves. The second mistake is believing the guard *is* the permission.
 
 **May live here.** `format.ts` (dates, byte sizes, initials), `sort-by-label.ts` (the A–Z ordering
 every dropdown uses by default), `validate-positive-int.ts`, `download.ts`,
-`document-title.service.ts`.
+`document-title.service.ts`, `language.service.ts`.
 
 **May not live here.** Business calculations. A rule that belongs to a feature belongs in that
 feature — or, if the server owns it, on the server. `format.ts` says so explicitly about currency:
@@ -1071,6 +1183,14 @@ server computes.
 `DISPLAY_TIME_ZONE` is `'UTC'` by default so two people in different places never read the same
 instant differently.
 
+**In the `Features` module.** `LanguageService` holds the current locale as a signal and offers one
+`pick(en, ar)` helper. It exists because API payloads carry paired `*En`/`*Ar` fields — a
+`FeatureAnnouncement` may ship English-only — and something has to choose which renders; `pick`
+falls back through the other language before it gives up on an empty string, so a missing
+translation is never a blank line. It is deliberately **not** an i18n framework, and the file says
+so: if the product ever needs message catalogues, plural rules, or localised dates, adopt a real
+library and delete this.
+
 **The common mistake.** Using it as a junk drawer. A helper that only one feature calls belongs in
 that feature; putting it here makes it everyone's dependency and nobody's responsibility.
 
@@ -1080,8 +1200,9 @@ that feature; putting it here makes it everyone's dependency and nobody's respon
 
 **Single responsibility.** Presentational components with no feature knowledge.
 
-**May live here.** `StatusPillComponent`, `ConfirmDialogComponent`, `EmptyStateComponent`, and
-`QUERY_CLIENT` — the shared TanStack `QueryClient`, wired to toast otherwise-unhandled API errors.
+**May live here.** `StatusPillComponent`, `ConfirmDialogComponent`, `EmptyStateComponent`,
+`WhatsNewModalComponent`, and `QUERY_CLIENT` — the shared TanStack `QueryClient`, wired to toast
+otherwise-unhandled API errors.
 
 **May not live here.** `HttpClient`, routing decisions, or a feature import. A component belongs
 here only once a **second** feature needs it — until then it lives in the feature that owns it.
@@ -1095,10 +1216,25 @@ while 5xx and network failures get up to two retries — plus `GLOBAL_ERROR_TOAS
 a query sets on its `meta` when it already renders its own error UI and does not want a redundant
 toast on top.
 
+**In the `Features` module.** `src/lib/whats-new-modal/` is the feature spotlight itself: a
+carousel over the announcements the shell hands it, with a gradient hero band, a bouncing glyph,
+and tinted benefit cards. It parses the body with a light markdown of its own —
+`- 🔖 Title — description` becomes a card, any other non-empty line becomes a paragraph — and
+`closed` emits **every** id it displayed, so one `POST` acknowledges the whole carousel.
+
+Two behaviours in it look like bugs and are not. The backdrop is **inert**: `onBackdrop()` is an
+empty method, because an acknowledgement is permanent and cross-device, so it may only be written
+on an explicit "Got it" or close. And the modal owns no dismissal state of its own — the shell
+clears it.
+
+This component is also the codebase's one sanctioned break from the PrimeNG-only rule, with
+bespoke markup and a bespoke stylesheet; only its icons come from PrimeIcons. The reasoning, and
+the cost, are recorded in [ADR-0007](adr/0007-bespoke-whats-new-modal.md).
+
 **The common mistake.** Redefining a colour in a component. Styling comes from
-`src/frontend/apps/web/src/design/components.css` and the tokens it reads. The second is reaching
-for a native `<button>` — PrimeNG everywhere is what makes focus, disabled, and keyboard behaviour
-consistent.
+`src/frontend/apps/web/src/design/components.css` and the tokens it reads, and the modal above is
+a bounded exception rather than a precedent. The second is reaching for a native `<button>` —
+PrimeNG everywhere is what makes focus, disabled, and keyboard behaviour consistent.
 
 ---
 
@@ -1108,8 +1244,8 @@ consistent.
 content area.
 
 **May live here.** `nav-config.ts` (the navigation), `app-layout.ts` (the component the guarded
-route group renders into; it also owns the route → page-title mapping and the redirect on session
-expiry), `sidebar.ts` and `top-bar.ts` (presentation only).
+route group renders into; it also owns the route → page-title mapping, the redirect on session
+expiry, and the "What's new" sweep), `sidebar.ts` and `top-bar.ts` (presentation only).
 
 **May not live here.** Feature logic. Public pages — login, auth callback, signing out, and 404
 deliberately render **outside** this shell.
@@ -1122,8 +1258,23 @@ not on `/items/new` (which is its own entry), and `requiredCapability` to hide a
 own comment restates the rule: *"This is presentation only. The backend enforces the permission on
 the underlying route and on every API call it makes — hiding a link here protects nothing."*
 
+**In the `Features` module.** `app-layout.ts` is where the spotlight is wired, and it is the right
+place precisely because the check must run on **every** route change regardless of which page is
+mounted, and one announcement can be scoped to several unrelated pages. Every page gets it with
+zero per-page work; no feature library knows the module exists.
+
+An effect on the current path calls `unack(path)` while the user is authenticated, and the result
+is only ever **set when non-empty — never cleared**. That reads like a missing `else` and is the
+opposite: a fast double-navigation can land a newer, empty response while a modal is open, and
+clearing on it would blink the modal away mid-read. The list is cleared in exactly one place,
+`onWhatsNewClosed`, on a deliberate dismiss — which clears first and then POSTs, so a failed `ack`
+still leaves the popup closed and the server simply re-offers it on a later navigation. Both the
+lookup and the acknowledgement fail **silently**: a feature popup is non-critical UX and must never
+raise a toast.
+
 **The common mistake.** Putting a feature's state in the layout because "the header needs it". The
-layout should render what it is given.
+layout should render what it is given. The spotlight is the exception that proves it — it lives
+here because it belongs to no page, not because the layout is a convenient place for state.
 
 ---
 
@@ -1203,6 +1354,13 @@ not a someday task.
 registrations in the two `DependencyInjection.cs` files, and the item tests. Keep the architecture
 tests.
 
+**Leave the `Features` module in place.** It is not part of the sample slice: it carries no
+business domain, and `Features/`, `Controllers/FeaturesController.cs`, and the
+`AddFeatureAnnouncements` migration stay. If you drop `InitialCreate` and rebuild the initial
+migration for your own schema, keep `AddFeatureAnnouncements` after it — or fold its two tables
+into your new baseline. Deleting the module entirely is a legitimate choice too; it is just a
+different decision from deleting the sample.
+
 **Frontend** — `src/frontend/libs/feature-items/README.md` carries the exact checklist: delete the
 library, remove the `items` routes from `apps/web/src/app/app.routes.ts` and the entries from
 `libs/shell/src/lib/nav-config.ts`, delete `ItemsApiService` and its export, regenerate
@@ -1223,6 +1381,7 @@ genuinely gone.
 | What "done" means | [definition-of-done.md](definition-of-done.md) |
 | Day-1 checklist | [onboarding.md](onboarding.md) |
 | Why each decision was made | [adr/](adr/) |
+| The "What's new" module, end to end | [whats-new.md](whats-new.md) |
 | The API contract workflow | [api/README.md](api/README.md) |
 | Conventions and commands | [../CLAUDE.md](../CLAUDE.md) |
 | The harness itself | [../.claude/README.md](../.claude/README.md) |
