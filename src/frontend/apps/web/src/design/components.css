@@ -533,6 +533,28 @@
   }
   .topbar {
     padding: 16px 18px;
+    /* The topbar is a flex ROW of: nav toggle, title block, spacer, actions. None of those can
+       shrink below its content by default (`min-width: auto` on a flex item), so on a narrow
+       phone the row simply grew past the viewport and took the whole document sideways with
+       it — DESIGN.md's "must look correct at the narrowest supported width", broken. Wrapping
+       lets the actions drop to a second line instead of pushing the page. */
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  /* The title block: allow it to shrink, and truncate rather than force the row wider. Without
+     `min-width: 0` the `text-overflow` below never engages, because the block keeps its
+     content-sized minimum. */
+  .topbar > div {
+    min-width: 0;
+  }
+  .topbar h1 {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .topbar .header-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 

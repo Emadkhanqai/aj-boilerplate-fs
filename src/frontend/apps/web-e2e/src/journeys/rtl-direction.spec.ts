@@ -125,13 +125,18 @@ test.describe('Right-to-left direction', { tag: ['@mocked', '@rtl'] }, () => {
       const limit = root.clientWidth;
       const offenders: string[] = [];
 
-      // Anything inside a fixed-position subtree is measured against the viewport and cannot
-      // extend the scrollable area — the off-canvas drawer sits beyond the trailing edge by
-      // design in RTL. Reporting its children buries the real cause under a dozen rows, which
-      // is exactly what the first version of this diagnostic did.
-      const inFixedSubtree = (el: Element): boolean => {
+      // Two kinds of element cross the viewport edge without being able to scroll the document,
+      // and reporting either of them hides the one that can:
+      //   - anything in a fixed-position subtree, measured against the viewport rather than the
+      //     document (the off-canvas drawer sits beyond the trailing edge by design in RTL); and
+      //   - anything inside a scroll container, which is the CORRECT way to carry wide content.
+      //     The items table is deliberately wider than a phone and scrolls inside `.scroll`;
+      //     listing it sent this diagnostic chasing the wrong element for two CI rounds.
+      const cannotScrollTheDocument = (el: Element): boolean => {
         for (let node: Element | null = el; node !== null; node = node.parentElement) {
-          if (getComputedStyle(node).position === 'fixed') return true;
+          const style = getComputedStyle(node);
+          if (style.position === 'fixed') return true;
+          if (node !== el && style.overflowX !== 'visible') return true;
         }
         return false;
       };
@@ -142,7 +147,7 @@ test.describe('Right-to-left direction', { tag: ['@mocked', '@rtl'] }, () => {
         if (rect.width === 0 || rect.height === 0) continue;
         const overhang = Math.max(rect.right - limit, -rect.left);
         if (overhang <= 1) continue;
-        if (inFixedSubtree(el)) continue;
+        if (cannotScrollTheDocument(el)) continue;
         const cls = typeof el.className === 'string' ? el.className : '';
         found.push({
           label:
