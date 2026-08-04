@@ -69,8 +69,15 @@
       </app-empty-state>
     </div>
   } @else {
-    <!-- LOADING + SUCCESS states: the table renders skeleton rows while `loading` is true. -->
-    <p-table
+    <!-- LOADING + SUCCESS states: the table renders skeleton rows while `loading` is true.
+
+         `.scroll` is load-bearing on a narrow viewport, not decoration. DESIGN.md requires wide
+         content to scroll inside its own container so the PAGE never scrolls sideways, and this
+         table is wider than a 390px viewport once its text is laid out with metrics wider than
+         a Mac's — which is why it looked fine locally and overflowed by 32px on CI. Remove this
+         and the horizontal scrollbar moves back onto the document. -->
+    <div class="scroll">
+      <p-table
       [value]="rows()"
       [lazy]="true"
       [paginator]="true"
@@ -128,7 +135,8 @@
           </td>
         </tr>
       </ng-template>
-    </p-table>
+      </p-table>
+    </div>
   }
 </section>
 
