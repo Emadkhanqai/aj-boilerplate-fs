@@ -114,10 +114,46 @@ test.describe('Right-to-left direction', { tag: ['@mocked', '@rtl'] }, () => {
 
     // A mirrored layout that overflows its viewport is the classic RTL failure: something is
     // still pinned to a physical edge and pushes the document the other way.
-    const overflows = await page.evaluate(
-      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-    );
-    expect(overflows, 'the document scrolls horizontally at 390px in RTL').toBe(false);
+    //
+    // This reports WHICH elements cross the edge, not merely that something did. The bare
+    // boolean this replaces was untraceable when it failed on CI and passed locally — and it
+    // does differ by platform, because macOS overlay scrollbars leave `clientWidth` at the full
+    // viewport width while a classic scrollbar on Linux takes layout width out of it. Naming
+    // the offenders is what makes such a failure diagnosable from a CI log alone.
+    const overflow = await page.evaluate(() => {
+      const root = document.documentElement;
+      const limit = root.clientWidth;
+      const offenders: string[] = [];
+
+      for (const el of Array.from(document.querySelectorAll('*'))) {
+        // Fixed elements are positioned against the viewport and do not extend the scrollable
+        // area, so an off-canvas drawer sitting beyond the trailing edge is not the culprit
+        // even though it reads as "outside". Skipping them keeps the report to real causes.
+        if (getComputedStyle(el).position === 'fixed') continue;
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) continue;
+        if (rect.right > limit + 1 || rect.left < -1) {
+          const cls = typeof el.className === 'string' ? el.className : '';
+          offenders.push(
+            `${el.tagName.toLowerCase()}${cls ? '.' + cls.trim().split(/\s+/).join('.') : ''} ` +
+              `[left=${rect.left.toFixed(1)} right=${rect.right.toFixed(1)}]`,
+          );
+        }
+      }
+
+      return {
+        scrollWidth: root.scrollWidth,
+        clientWidth: limit,
+        offenders: offenders.slice(0, 10),
+      };
+    });
+
+    expect(
+      overflow.scrollWidth,
+      `the document scrolls horizontally at 390px in RTL — ` +
+        `scrollWidth ${overflow.scrollWidth} vs clientWidth ${overflow.clientWidth}. ` +
+        `Elements crossing the edge: ${overflow.offenders.join(' | ') || '(none in flow — check for a fixed or absolutely positioned element, or a scrollbar-width difference)'}`,
+    ).toBeLessThanOrEqual(overflow.clientWidth + 1);
   });
 
   test('the item form mirrors too, and stays accessible in Arabic', async ({ page }) => {
