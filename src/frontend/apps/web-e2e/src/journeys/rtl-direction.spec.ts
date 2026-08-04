@@ -125,26 +125,42 @@ test.describe('Right-to-left direction', { tag: ['@mocked', '@rtl'] }, () => {
       const limit = root.clientWidth;
       const offenders: string[] = [];
 
+      // Anything inside a fixed-position subtree is measured against the viewport and cannot
+      // extend the scrollable area — the off-canvas drawer sits beyond the trailing edge by
+      // design in RTL. Reporting its children buries the real cause under a dozen rows, which
+      // is exactly what the first version of this diagnostic did.
+      const inFixedSubtree = (el: Element): boolean => {
+        for (let node: Element | null = el; node !== null; node = node.parentElement) {
+          if (getComputedStyle(node).position === 'fixed') return true;
+        }
+        return false;
+      };
+
+      const found: { label: string; overhang: number }[] = [];
       for (const el of Array.from(document.querySelectorAll('*'))) {
-        // Fixed elements are positioned against the viewport and do not extend the scrollable
-        // area, so an off-canvas drawer sitting beyond the trailing edge is not the culprit
-        // even though it reads as "outside". Skipping them keeps the report to real causes.
-        if (getComputedStyle(el).position === 'fixed') continue;
         const rect = el.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
-        if (rect.right > limit + 1 || rect.left < -1) {
-          const cls = typeof el.className === 'string' ? el.className : '';
-          offenders.push(
+        const overhang = Math.max(rect.right - limit, -rect.left);
+        if (overhang <= 1) continue;
+        if (inFixedSubtree(el)) continue;
+        const cls = typeof el.className === 'string' ? el.className : '';
+        found.push({
+          label:
             `${el.tagName.toLowerCase()}${cls ? '.' + cls.trim().split(/\s+/).join('.') : ''} ` +
-              `[left=${rect.left.toFixed(1)} right=${rect.right.toFixed(1)}]`,
-          );
-        }
+            `[left=${rect.left.toFixed(1)} right=${rect.right.toFixed(1)} over=${overhang.toFixed(1)}px]`,
+          overhang,
+        });
       }
+
+      // Worst overhang first: the widest offender is the one to fix, and it is usually the
+      // outermost element in a chain that all report the same overflow.
+      found.sort((a, b) => b.overhang - a.overhang);
+      offenders.push(...found.slice(0, 10).map((f) => f.label));
 
       return {
         scrollWidth: root.scrollWidth,
         clientWidth: limit,
-        offenders: offenders.slice(0, 10),
+        offenders,
       };
     });
 
