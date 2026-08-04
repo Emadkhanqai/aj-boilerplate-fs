@@ -103,7 +103,7 @@ jobs:
           fi
 
       - name: Unit tests with coverage
-        run: npx nx affected -t test --parallel=3 --coverage --coverageReporters=lcov --coverageReporters=text-summary
+        run: npx nx affected -t test --parallel=3 --coverage
 
       - name: Upload coverage
         if: always()
@@ -342,7 +342,7 @@ jobs:
       # run-many, not affected: the analysis covers the whole project, so the
       # coverage report has to as well.
       - name: Unit tests with lcov coverage
-        run: npx nx run-many -t test --parallel=3 --coverage --coverageReporters=lcov
+        run: npx nx run-many -t test --parallel=3 --coverage
 
       # No sonar.branch.name and no sonar.pullrequest.* — both need Developer
       # Edition or above. On Community Build this IS the default-branch analysis.

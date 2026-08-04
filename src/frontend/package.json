@@ -46,15 +46,15 @@
     "@angular/language-service": "~21.2.0",
     "@axe-core/playwright": "^4.12.1",
     "@eslint/js": "^9.8.0",
-    "@nx/angular": "23.0.2",
-    "@nx/eslint": "23.0.2",
-    "@nx/eslint-plugin": "23.0.2",
-    "@nx/js": "23.0.2",
-    "@nx/playwright": "^23.0.2",
-    "@nx/vite": "23.0.2",
-    "@nx/vitest": "23.0.2",
-    "@nx/web": "23.0.2",
-    "@nx/workspace": "23.0.2",
+    "@nx/angular": "23.1.1",
+    "@nx/eslint": "23.1.1",
+    "@nx/eslint-plugin": "23.1.1",
+    "@nx/js": "23.1.1",
+    "@nx/playwright": "23.1.1",
+    "@nx/vite": "23.1.1",
+    "@nx/vitest": "23.1.1",
+    "@nx/web": "23.1.1",
+    "@nx/workspace": "23.1.1",
     "@playwright/test": "^1.37.0",
     "@schematics/angular": "~21.2.0",
     "@swc/helpers": "~0.5.18",
@@ -72,9 +72,9 @@
     "jsonc-eslint-parser": "^2.1.0",
     "msw": "^2.15.0",
     "ng-packagr": "~21.2.0",
-    "nx": "23.0.2",
+    "nx": "23.1.1",
     "openapi-typescript": "^7.13.0",
-    "postcss": "^8.4.5",
+    "postcss": "^8.5.25",
     "prettier": "~3.6.2",
     "tslib": "^2.3.0",
     "typescript": "~5.9.2",
@@ -86,5 +86,10 @@
     "workerDirectory": [
       "apps/web/public"
     ]
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.9",
+    "postcss": "^8.5.25",
+    "undici": "^7.29.0"
   }
 }

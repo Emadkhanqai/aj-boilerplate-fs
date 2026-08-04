@@ -4,11 +4,15 @@
   "sourceRoot": "libs/data-access/api-client/src",
   "prefix": "lib",
   "projectType": "library",
-  "tags": ["scope:data-access"],
+  "tags": [
+    "scope:data-access"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/dist/{projectRoot}"
+      ],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/data-access/api-client/ng-package.json",
@@ -24,7 +28,11 @@
     "test": {
       "executor": "@nx/angular:unit-test",
       "options": {
-        "watch": false
+        "watch": false,
+        "coverageReporters": [
+          "lcov",
+          "text-summary"
+        ]
       }
     },
     "lint": {

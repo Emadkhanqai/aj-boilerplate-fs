@@ -121,7 +121,7 @@ jobs:
       # both of which Dependabot will already have opened a pull request for.
       # ----------------------------------------------------------------------
       - name: Trivy — fail on fixable HIGH or CRITICAL
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           scan-type: image
@@ -147,7 +147,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Trivy — full report (SARIF, non-blocking)
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           scan-type: image
@@ -169,7 +169,7 @@ jobs:
 
       - name: Trivy — full report (JSON, for the artifact)
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           scan-type: image
@@ -196,7 +196,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Generate CycloneDX SBOM
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           scan-type: image
@@ -206,7 +206,7 @@ jobs:
 
       - name: Generate SPDX SBOM
         if: always()
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ${{ matrix.image }}
           scan-type: image

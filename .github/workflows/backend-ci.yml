@@ -289,10 +289,15 @@ jobs:
       # migrations in this commit, with no SDK, no source tree, and no `dotnet ef` on the target.
       # Building it here proves it CAN be built on every run; deploy.yml is what runs it.
       #
-      # Release, and therefore NOT `--no-build`. Everything else in this job reuses the Debug
-      # build, but this is the one output that leaves CI and executes against a production
-      # database — shipping an unoptimised Debug binary there to save a compile is the wrong
-      # trade. Release output does not exist at this point, so it has to build its own.
+      # Release, not Debug. Everything else in this job reuses the Debug build, but this is the
+      # one output that leaves CI and executes against a production database — shipping an
+      # unoptimised Debug binary there to save a compile is the wrong trade.
+      #
+      # The Release build is a SEPARATE, EXPLICIT step rather than being left to `dotnet ef`.
+      # That is not tidiness: `dotnet ef` swallows compiler output and reports only
+      # "Build failed. Use dotnet build to see the errors.", so a failure here is undiagnosable
+      # from the CI log. Building first means the real error is printed by the real compiler,
+      # and the bundle step then runs with `--no-build` against output that is already verified.
       #
       # ZERO-DOWNTIME RULE — expand, migrate, contract. The bundle runs BEFORE the new code is live,
       # so this release's schema must still satisfy the release that is currently serving traffic.
@@ -302,10 +307,15 @@ jobs:
         shell: bash
         working-directory: src/backend
         run: |
+          # `AjBoilerplate.slnx`, not "$SOLUTION": this step sets working-directory to src/backend,
+          # while $SOLUTION is relative to the repository root.
+          dotnet build AjBoilerplate.slnx --configuration Release | tee "$GITHUB_WORKSPACE/migration-bundle-build.log"
+
           dotnet ef migrations bundle \
             --project         src/AjBoilerplate.Infrastructure \
             --startup-project src/AjBoilerplate.Api \
             --configuration   Release \
+            --no-build \
             --self-contained \
             --target-runtime  linux-x64 \
             --force \

@@ -4,11 +4,15 @@
   "sourceRoot": "libs/shared/ui/src",
   "prefix": "portal",
   "projectType": "library",
-  "tags": ["scope:shared-ui"],
+  "tags": [
+    "scope:shared-ui"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/dist/{projectRoot}"
+      ],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/shared/ui/ng-package.json",
@@ -25,7 +29,13 @@
       "executor": "@nx/angular:unit-test",
       "options": {
         "watch": false,
-        "setupFiles": ["libs/shared/ui/src/test-setup.ts"]
+        "setupFiles": [
+          "libs/shared/ui/src/test-setup.ts"
+        ],
+        "coverageReporters": [
+          "lcov",
+          "text-summary"
+        ]
       }
     },
     "lint": {

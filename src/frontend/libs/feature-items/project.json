@@ -4,11 +4,15 @@
   "sourceRoot": "libs/feature-items/src",
   "prefix": "app",
   "projectType": "library",
-  "tags": ["scope:feature-items"],
+  "tags": [
+    "scope:feature-items"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/dist/{projectRoot}"
+      ],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/feature-items/ng-package.json",
@@ -25,7 +29,13 @@
       "executor": "@nx/angular:unit-test",
       "options": {
         "watch": false,
-        "setupFiles": ["libs/feature-items/src/test-setup.ts"]
+        "setupFiles": [
+          "libs/feature-items/src/test-setup.ts"
+        ],
+        "coverageReporters": [
+          "lcov",
+          "text-summary"
+        ]
       }
     },
     "lint": {

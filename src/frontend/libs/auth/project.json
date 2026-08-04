@@ -4,11 +4,15 @@
   "sourceRoot": "libs/auth/src",
   "prefix": "portal",
   "projectType": "library",
-  "tags": ["scope:auth"],
+  "tags": [
+    "scope:auth"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
-      "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "outputs": [
+        "{workspaceRoot}/dist/{projectRoot}"
+      ],
       "defaultConfiguration": "production",
       "options": {
         "project": "libs/auth/ng-package.json",
@@ -24,7 +28,11 @@
     "test": {
       "executor": "@nx/angular:unit-test",
       "options": {
-        "watch": false
+        "watch": false,
+        "coverageReporters": [
+          "lcov",
+          "text-summary"
+        ]
       }
     },
     "lint": {
