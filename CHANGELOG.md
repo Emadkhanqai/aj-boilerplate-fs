@@ -69,7 +69,7 @@ Nothing yet.
 
 ---
 
-## [0.1.0] — 2026-08-03
+## [0.1.0] — 2026-08-04
 
 The initial extraction, published as three repositories. Everything below is the starting
 state rather than a change from something; subsequent entries will read as changes.
@@ -187,3 +187,28 @@ Stated here rather than discovered later:
 
 [Unreleased]: https://github.com/<your-org>/aj-boilerplate-fs/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/<your-org>/aj-boilerplate-fs/releases/tag/v0.1.0
+
+### Also in this first tag
+
+Fixes made between writing the entries above and cutting the tag. They are listed because
+they are real defects that a consumer would otherwise inherit, not because anything here
+changes shape.
+
+- **Dependency advisories cleared.** Angular moves to 21.2.19, which patches an
+  HttpTransferCache cache-key ambiguity and two XSS advisories in packages that ship to the
+  browser. Nx moves to 23.1.1, and `brace-expansion`, `postcss` and `undici` are pinned
+  forward through `overrides`. `npm audit --audit-level=high` reports nothing, so the gate
+  passes on its merits rather than by having its threshold moved.
+- **Coverage was never produced.** The CI command passed `--coverageReporters`, which is
+  valid on the Angular executor and invalid on `@nx/vite`, so it crashed exactly the two
+  projects using the latter while the other six wrote reporters that do not include lcov.
+  The reporter now lives in each project's own configuration. `sonar.javascript.lcov.reportPaths`
+  pointed at a single file that has never existed and is now a wildcard.
+- **The page scrolled sideways on a phone.** The topbar is a flex row whose items cannot
+  shrink below their content, so it grew past the viewport and took the document with it —
+  43px of overflow at 320px. It now wraps and the title truncates. The items table, wider
+  than a phone by nature, gained the `.scroll` container `DESIGN.md` already required.
+- **The migration bundle and the container scan could not run.** The bundle left the compile
+  to `dotnet ef`, which reports only "Build failed"; it is an explicit Release build now.
+  The Trivy action was pinned to a tag that does not exist.
+- Two `vitest.config.mts` files and one Playwright spec used `__dirname` in an ES module.
