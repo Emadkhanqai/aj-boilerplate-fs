@@ -11,9 +11,9 @@
     <!-- Real SQL Server in a throwaway container. There is deliberately no in-memory provider
          here: an integration suite that cannot see a unique index, a rowversion, or real SQL
          translation is not testing the integration. -->
-    <PackageReference Include="Testcontainers.MsSql" Version="4.4.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.13.0" />
     <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
   </ItemGroup>
 
   <ItemGroup>
