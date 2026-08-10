@@ -10,7 +10,9 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.3" />
     <!-- Abstractions only (no logging provider, no configuration binding): the Application layer
          may log, but must never own the logging pipeline. -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.3" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
     <!-- Needed only to detect the SQL Server deadlock/unique-constraint error numbers inside a
          caught DbUpdateException, so a lost race can be translated into a clean idempotent/409
          result instead of propagating as a raw 500 (see Persistence/). Version pinned to match what
