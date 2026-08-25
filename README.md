@@ -57,9 +57,9 @@ without forking the codebase. Those decisions are made here, written down as
   server-side per user, so it survives cleared browser storage and other devices, and several
   pending announcements chain into one carousel. Shipping the next one is an INSERT-only
   migration and no code at all. See [docs/whats-new.md](docs/whats-new.md).
-- **EF Core migration workflow** — MSSQL, migration-based, with two migrations in the box
-  (`InitialCreate` and `AddFeatureAnnouncements`) so the workflow is demonstrated rather than
-  described.
+- **EF Core migration workflow** — MSSQL, migration-based, with three migrations in the box
+  (`InitialCreate`, `AddFeatureAnnouncements`, and `AddIdempotencyRecords`) so the workflow is
+  demonstrated rather than described.
 - **Two clouds, one switch** — `CLOUD_PROVIDER=gcp|azure` selects the secrets provider and the
   identity issuer at the composition root, and selects which `infra/` tree deploys. Terraform
   for GCP, Bicep for Azure, provisioning the same logical shape.
@@ -139,11 +139,14 @@ export CLOUD_PROVIDER=gcp          # or: azure
 export ConnectionStrings__Default='Server=localhost,1433;Database=AjBoilerplate;User Id=sa;Password=<your-local-password>;TrustServerCertificate=True;'
 export ConnectionStrings__Redis='localhost:6379'
 
-# 3 — database. Apply the migrations (InitialCreate, then AddFeatureAnnouncements).
-dotnet tool install --global dotnet-ef
-dotnet ef database update \
-  --project        src/backend/src/AjBoilerplate.Infrastructure \
-  --startup-project src/backend/src/AjBoilerplate.Api
+# 3 — database. Applies all three migrations: InitialCreate, AddFeatureAnnouncements,
+#     AddIdempotencyRecords. The tool manifest and the SDK pin both live in src/backend,
+#     so run EF from there — the subshell leaves you back at the repository root.
+(cd src/backend \
+  && dotnet tool restore \
+  && dotnet ef database update \
+       --project        src/AjBoilerplate.Infrastructure \
+       --startup-project src/AjBoilerplate.Api)
 
 # 4 — run the API  →  http://localhost:5080  (OpenAPI UI at /swagger)
 dotnet run --project src/backend/src/AjBoilerplate.Api

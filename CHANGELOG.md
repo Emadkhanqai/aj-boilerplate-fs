@@ -85,7 +85,7 @@ state rather than a change from something; subsequent entries will read as chang
   and a documented status-code contract. Exceptions map to responses through an ordered
   handler chain rather than through try/catch in controllers
   ([ADR-0005](docs/adr/0005-apiresponse-envelope-and-status-code-contract.md)).
-- EF Core 10 against SQL Server, migration-based, with two migrations in the box so the
+- EF Core 10 against SQL Server, migration-based, with three migrations in the box so the
   workflow is demonstrated rather than described.
 - Transactional outbox and inbox, a health-check split into liveness and readiness,
   fixed-window rate limiting, security headers, forwarded-headers handling, opaque entity

@@ -57,10 +57,12 @@ the repository, and they never will be.
 ```bash
 export CLOUD_PROVIDER=gcp    # or azure — ask which one this project uses
 
-dotnet tool install --global dotnet-ef
-dotnet ef database update \
-  --project        src/backend/src/AjBoilerplate.Infrastructure \
-  --startup-project src/backend/src/AjBoilerplate.Api
+# The tool manifest and the SDK pin both live in src/backend, so run EF from there.
+(cd src/backend \
+  && dotnet tool restore \
+  && dotnet ef database update \
+       --project        src/AjBoilerplate.Infrastructure \
+       --startup-project src/AjBoilerplate.Api)
 
 dotnet run --project src/backend/src/AjBoilerplate.Api    # → http://localhost:5080
 ```
