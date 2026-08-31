@@ -143,7 +143,7 @@ jobs:
     # you cannot roll back.
     environment: ${{ inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Cross-workflow artefact download. `gh` rather than a third-party action: one fewer
       # dependency in the path that touches the production database.
@@ -211,12 +211,12 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Authenticate to Google Cloud (OIDC, no stored key)
         if: inputs.cloud_provider == 'gcp'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
         if: inputs.cloud_provider == 'gcp'
 
       - name: Apply migrations (GCP / Cloud SQL)
@@ -270,7 +270,7 @@ jobs:
       # ----------------------------------------------------------------------
       - name: Authenticate to Azure (OIDC federated credential, no client secret)
         if: inputs.cloud_provider == 'azure'
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -325,7 +325,7 @@ jobs:
 
       - name: Upload the applied migration script
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: migrations-applied-${{ inputs.environment }}
           path: migration-bundle/migrations.sql
@@ -356,17 +356,17 @@ jobs:
       run:
         working-directory: infra/gcp
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Authenticate to Google Cloud (OIDC, no stored key)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - uses: google-github-actions/setup-gcloud@v3
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: '1.9.8'
 
@@ -398,7 +398,7 @@ jobs:
         run: terraform plan -input=false -lock-timeout=5m -out=tfplan
 
       - name: Upload plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tfplan-${{ inputs.environment }}
           path: infra/gcp/tfplan
@@ -427,10 +427,10 @@ jobs:
       run:
         working-directory: infra/azure
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Authenticate to Azure (OIDC federated credential, no client secret)
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}

@@ -57,13 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -83,13 +83,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload format log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: format-verification-log
           path: format.log
@@ -126,13 +126,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload build log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-log
           path: build.log
@@ -167,13 +167,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-and-architecture-test-results
           path: TestResults/**
@@ -236,13 +236,13 @@ jobs:
       # at all: the test fixture injects its container's own.
       CLOUD_PROVIDER: 'gcp'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -322,7 +322,7 @@ jobs:
             --output "$GITHUB_WORKSPACE/migrate" | tee "$GITHUB_WORKSPACE/migration-bundle.log"
 
       - name: Upload the migration bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: migration-bundle
           path: |
@@ -343,7 +343,7 @@ jobs:
 
       - name: Upload integration artefacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: integration-test-results
           path: |
@@ -382,13 +382,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
@@ -401,7 +401,7 @@ jobs:
 
       - name: Upload contract check log
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openapi-contract-check
           path: openapi-check.log
@@ -446,29 +446,29 @@ jobs:
       # and the integration suite starts its own SQL Server via Testcontainers. See gate 5.
       CLOUD_PROVIDER: 'gcp'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Full history so SonarQube can attribute blame and compute "new code" correctly.
           fetch-depth: 0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
       # The SonarScanner for .NET runs on the JVM.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: 'temurin'
           java-version: '21'
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('src/backend/**/*.csproj', 'src/backend/**/Directory.Packages.props', 'src/backend/.config/dotnet-tools.json', 'src/backend/global.json') }}
           restore-keys: |
             nuget-${{ runner.os }}-
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: sonar-cache-${{ runner.os }}
@@ -520,9 +520,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
@@ -544,7 +544,7 @@ jobs:
 
       - name: Upload audit log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vulnerable-package-audit
           path: vulnerable.log
@@ -559,11 +559,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Only required for organisation-owned private repositories. Free for public ones.
@@ -583,14 +583,14 @@ jobs:
       actions: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: ${{ env.GLOBAL_JSON }}
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: csharp
           queries: security-and-quality
@@ -601,6 +601,6 @@ jobs:
         run: dotnet build "$SOLUTION"
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
         with:
           category: '/language:csharp'
