@@ -96,6 +96,14 @@ integration fixture, there is a two-line change to make.
   (`new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")`) and the `.WithImage(...)`
   call is dropped. If you kept the sample fixture, apply the same two-line change.
 
+- **`npm audit` went red on eleven high advisories, all in build tooling.** The Nx toolchain
+  moves to 23.1.3 (a patch, not a major), and `less` is pinned past 4.6.7 by an override —
+  which also resolves the `image-size` chain underneath it. Nothing that ships in the browser
+  bundle was affected; these are build-time dependencies, and the gate audits them on purpose,
+  because a compromised build tool is a compromised artefact. `package-lock.json` was
+  regenerated rather than patched, so expect a large lockfile diff and take it wholesale.
+  Lint, unit tests, typecheck and the production build all pass on the new tree.
+
 - **The frontend image failed the container scan.** The `nginx:alpine` base is rebuilt on
   nginx's schedule rather than Alpine's, so between those rebuilds it ships packages for
   which Alpine has already published a fix — here `libcrypto3` and `libssl3`
