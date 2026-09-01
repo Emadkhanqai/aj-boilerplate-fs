@@ -65,7 +65,24 @@ never derived to the single-stack repositories — those track releases only.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- `docs/upgrading.md` told you to start your own ADR series at `0008`, and called the shipped
+  set "the seven ADRs". There are eleven, so `0008`–`0011` are taken and that advice collided
+  with real files. It now says to count `docs/adr/` at the version you cloned, because this
+  number moves with every release. **If you already numbered your own ADRs from `0008`, you
+  have a clash to reconcile** — `docs/adr/README.md` is explicit that numbers are never
+  reused or renumbered, so renumber *yours*, not the boilerplate's.
+
+- `Testcontainers.MsSql` 4.4.0 → 4.14.0. 4.4.0 pulls `SSH.NET` 2024.2.0 transitively, which
+  now carries a high-severity advisory (GHSA-q939-rpr3-3284, patched in 2026.0.0). Because
+  `TreatWarningsAsErrors` is on, this fails `dotnet restore` with `error NU1903` — the build
+  goes red on a package nobody referenced directly, on a machine that never changed. 4.14.0
+  resolves `SSH.NET` 2026.0.0. **Nothing to do but take it**, unless you had pinned
+  Testcontainers yourself. One source change came with it: `MsSqlBuilder()`'s parameterless
+  constructor is obsolete in 4.14.0, so the image moves into the constructor
+  (`new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")`) and the `.WithImage(...)`
+  call is dropped. If you kept the sample fixture, apply the same two-line change.
 
 ---
 

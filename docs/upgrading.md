@@ -243,9 +243,12 @@ cannot, and no diff will tell you why.
 `git checkout boilerplate/main -- <path>` into a hand merge, every single time, forever. If you
 must deviate, deviate in a new file rather than in the upstream one, and say so.
 
-**Record deviations in your own ADR series, starting at `0008`.** Per
-[docs/adr/README.md](adr/README.md), the seven ADRs that ship are the boilerplate's decisions;
-yours start at 0008. An ADR that says "we replaced the envelope handler because X" is the document
+**Record deviations in your own ADR series.** Per
+[docs/adr/README.md](adr/README.md), the ADRs that ship are the boilerplate's decisions; yours
+start at the next free number after them — or you delete them and start at `0001`, but pick one
+and be consistent. Do not hardcode a starting number from memory: count what is in
+`docs/adr/` at the version you cloned, because the boilerplate adds ADRs over time and a number
+that was free at one release is taken at the next. An ADR that says "we replaced the envelope handler because X" is the document
 that tells a future upgrader *not* to take the upstream version of that file. Without it they will
 take it, and the reason it was changed will be rediscovered as an incident.
 

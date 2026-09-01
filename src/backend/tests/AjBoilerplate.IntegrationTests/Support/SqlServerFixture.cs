@@ -31,8 +31,8 @@ public sealed class SqlServerFixture : IAsyncLifetime
     // run the same engine. Testcontainers supplies the throwaway SA password itself — there is no
     // credential to commit, which is the main reason this suite owns its own database rather than
     // talking to a CI service container configured with a static one.
-    private readonly MsSqlContainer _container = new MsSqlBuilder()
-        .WithImage("mcr.microsoft.com/mssql/server:2022-latest")
+    private readonly MsSqlContainer _container =
+        new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
         .Build();
 
     private ApiFactory? _api;
