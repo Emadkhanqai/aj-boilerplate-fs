@@ -65,6 +65,18 @@ never derived to the single-stack repositories — those track releases only.
 
 ## [Unreleased]
 
+Nothing yet.
+
+---
+
+## [0.1.1] — 2026-09-01
+
+A patch release, and every entry in it is the same story: a tree that was green in August
+went red in September without anybody touching it. Two advisories were published against
+packages nobody referenced directly, and one instruction in the upgrade guide went stale
+because the boilerplate grew. Nothing changes shape — but if you kept the sample
+integration fixture, there is a two-line change to make.
+
 ### Fixed
 
 - `docs/upgrading.md` told you to start your own ADR series at `0008`, and called the shipped
@@ -83,6 +95,15 @@ never derived to the single-stack repositories — those track releases only.
   constructor is obsolete in 4.14.0, so the image moves into the constructor
   (`new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")`) and the `.WithImage(...)`
   call is dropped. If you kept the sample fixture, apply the same two-line change.
+
+- **The frontend image failed the container scan.** The `nginx:alpine` base is rebuilt on
+  nginx's schedule rather than Alpine's, so between those rebuilds it ships packages for
+  which Alpine has already published a fix — here `libcrypto3` and `libssl3`
+  (CVE-2026-14456) and `libexpat` (CVE-2026-66046), four HIGH findings, all fixable. The
+  runtime stage now runs `apk upgrade --no-cache`, which closes the window without pinning
+  a base tag that goes stale and without an allowlist entry — `.trivyignore.yaml` ships
+  empty on purpose. **Take this one**: if you built from the v0.1.0 Dockerfile, the same
+  gap is in your image.
 
 ---
 
