@@ -85,7 +85,7 @@ jobs:
             image: aj-boilerplate-web:ci
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Plain `docker build` rather than a build action: these Dockerfiles need no
       # buildx features, no cache export, and no registry, and one fewer third-party
@@ -160,7 +160,7 @@ jobs:
 
       - name: Upload SARIF to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-${{ matrix.name }}.sarif
           # A distinct category per image, or the second upload replaces the first and the
@@ -236,7 +236,7 @@ jobs:
 
       - name: Upload scan reports and SBOMs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: supply-chain-${{ matrix.name }}
           path: |
@@ -262,7 +262,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check .trivyignore.yaml for expired or undocumented entries
         shell: bash
