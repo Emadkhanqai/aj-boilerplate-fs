@@ -1,6 +1,6 @@
 # Static SPA build. `apps/web`'s `production` configuration sets outputMode: "static" with
 # ssr/prerender disabled, so the runtime image is just nginx serving the built browser bundle.
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /src
 COPY package*.json ./
 RUN npm ci
