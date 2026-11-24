@@ -24,7 +24,8 @@
       ],
       "@aj-boilerplate/shared/ui": ["./libs/shared/ui/src/index.ts"],
       "@aj-boilerplate/shared/util": ["./libs/shared/util/src/index.ts"],
-      "@aj-boilerplate/feature-items": ["./libs/feature-items/src/index.ts"]
+      "@aj-boilerplate/feature-items": ["./libs/feature-items/src/index.ts"],
+      "@aj-boilerplate/feature-admin": ["./libs/feature-admin/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "tmp"]

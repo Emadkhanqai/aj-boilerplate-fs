@@ -54,6 +54,18 @@ export const appRoutes: Routes = [
         canDeactivate: [unsavedChangesGuard],
       },
       // ---- end sample feature ----
+
+      // ---- Administration (libs/feature-admin): behind the admin capability. ----
+      {
+        path: 'admin/users',
+        loadComponent: () => import('@aj-boilerplate/feature-admin').then((m) => m.UsersPageComponent),
+        canActivate: [capabilityGuard('canAdminister')],
+      },
+      {
+        path: 'admin/sign-in-history',
+        loadComponent: () => import('@aj-boilerplate/feature-admin').then((m) => m.SignInHistoryPageComponent),
+        canActivate: [capabilityGuard('canAdminister')],
+      },
     ],
   },
 

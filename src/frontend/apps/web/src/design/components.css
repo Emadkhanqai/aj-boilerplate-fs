@@ -1959,3 +1959,39 @@ table.data-table tbody tr:last-child td {
   gap: 10px;
   justify-content: flex-end;
 }
+/* ----- Admin dialogs: stacked fields at the same rhythm as the form pages ----- */
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ----- Paginator: the one pagination standard (count left, pages middle, rows selector right) -----
+   PrimeNG centres the whole paginator. Auto margins on the count and on the rows selector take
+   the free space instead, which pins them to the edges and leaves the page links in the middle.
+   Logical margins, so it mirrors in RTL. */
+.p-paginator .p-paginator-current {
+  margin-inline-end: auto;
+}
+.p-paginator .p-paginator-rpp-dropdown,
+.p-paginator p-select {
+  margin-inline-start: auto;
+}
+
+/* A search box that has to show its whole placeholder. */
+.filter-bar .field.search-wide {
+  min-width: 340px;
+}
+.filter-bar .field.search-wide p-iconfield,
+.filter-bar .field.search-wide input {
+  width: 100%;
+}
+
+/* Positive outcome inside a dialog (e.g. which groups a save added and removed). */
+.result-note {
+  padding: var(--space-3) var(--space-4);
+  background: var(--moss-tint);
+  color: var(--moss-deep);
+  border-radius: 8px;
+  font-size: 13px;
+}

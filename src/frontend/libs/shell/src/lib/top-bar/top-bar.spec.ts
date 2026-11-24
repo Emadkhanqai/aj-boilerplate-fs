@@ -4,7 +4,10 @@ import { DOCUMENT } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 import { providePrimeNG } from 'primeng/config';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
+import { of } from 'rxjs';
 import { AuthService } from '@aj-boilerplate/auth';
+import { AdminApiService } from '@aj-boilerplate/data-access/api-client';
 import { DocumentDirectionService, LanguageService, provideDocumentDirection } from '@aj-boilerplate/shared/util';
 import { TopBarComponent } from './top-bar';
 
@@ -19,6 +22,9 @@ async function renderTopBar(roles?: string[]) {
       provideZonelessChangeDetection(),
       providePrimeNG({}),
       provideDocumentDirection(),
+      provideTanStackQuery(new QueryClient()),
+      // One portal => the switcher renders nothing, so these tests stay about the language toggle.
+      { provide: AdminApiService, useValue: { myPortals: () => of({ portalKeys: [], portals: [] }) } },
       { provide: AuthService, useValue: authStub(roles) },
     ],
   });

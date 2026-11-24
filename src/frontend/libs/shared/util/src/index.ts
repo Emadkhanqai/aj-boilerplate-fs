@@ -6,3 +6,4 @@ export * from './lib/document-direction.service';
 export * from './lib/unsaved-changes.guard';
 export * from './lib/download';
 export * from './lib/validate-positive-int';
+export * from './lib/paginator';

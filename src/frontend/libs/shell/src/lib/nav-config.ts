@@ -57,7 +57,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: 'Administration',
     items: [
-      // Placeholder — wire to your own admin surface, or delete the group.
+      { label: 'Users & roles', to: '/admin/users', icon: 'pi pi-users', requiredCapability: 'canAdminister' },
+      { label: 'Sign-in history', to: '/admin/sign-in-history', icon: 'pi pi-history', requiredCapability: 'canAdminister' },
+      // Placeholder — wire to your own admin surface, or delete it.
       {
         label: 'Settings',
         to: '/settings',

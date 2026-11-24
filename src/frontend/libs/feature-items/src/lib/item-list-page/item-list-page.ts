@@ -24,7 +24,15 @@ import { ItemsApiService, apiErrorMessage, isConflictError } from '@aj-boilerpla
 import type { ItemResponse, ItemStatus } from '@aj-boilerplate/data-access/api-types';
 import { ITEM_STATUSES } from '@aj-boilerplate/data-access/api-types';
 import { ConfirmDialogComponent, EmptyStateComponent, StatusPillComponent } from '@aj-boilerplate/shared/ui';
-import { DocumentTitleService, formatDateTime, sortByLabel } from '@aj-boilerplate/shared/util';
+import {
+  DocumentTitleService,
+  PAGE_REPORT_TEMPLATE,
+  PAGE_SIZE_OPTIONS,
+  formatDateTime,
+  rememberPageSize,
+  rememberedPageSize,
+  sortByLabel,
+} from '@aj-boilerplate/shared/util';
 
 /**
  * ============================================================================
@@ -78,7 +86,9 @@ export class ItemListPageComponent implements OnInit {
   protected readonly canDelete = computed(() => this.auth.capabilities().canDelete);
 
   protected readonly page = signal(1);
-  protected readonly pageSize = signal(10);
+  protected readonly pageSize = signal(rememberedPageSize('items'));
+  protected readonly pageSizeOptions = PAGE_SIZE_OPTIONS;
+  protected readonly pageReport = PAGE_REPORT_TEMPLATE;
   /** Bound to the search box. Kept separate from {@link search} so typing doesn't fetch. */
   protected readonly searchInput = signal('');
   /** The debounced value the query actually keys on. */
@@ -154,6 +164,7 @@ export class ItemListPageComponent implements OnInit {
   protected onLazyLoad(event: TableLazyLoadEvent): void {
     const rows = event.rows ?? this.pageSize();
     this.pageSize.set(rows);
+    rememberPageSize('items', rows);
     this.page.set(Math.floor((event.first ?? 0) / rows) + 1);
   }
 

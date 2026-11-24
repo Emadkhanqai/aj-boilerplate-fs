@@ -1,0 +1,122 @@
+<div class="page-head">
+  <div>
+    <h2>Users &amp; roles</h2>
+    <p class="sub">Who holds a seat, which groups they are in, and whether they can sign in.</p>
+  </div>
+  <span class="spacer"></span>
+  <p-button label="Add user" icon="pi pi-plus" data-testid="add-user" [disabled]="groupsQuery.isPending()" (onClick)="creating.set(true)" />
+</div>
+
+<section class="panel">
+  <div class="filter-bar">
+    <div class="field search-wide">
+      <label for="user-search">Search</label>
+      <p-iconfield>
+        <p-inputicon styleClass="pi pi-search" />
+        <input
+          id="user-search"
+          pInputText
+          type="search"
+          placeholder="Name or email; blank lists everyone"
+          data-testid="user-search"
+          [ngModel]="searchInput()"
+          (ngModelChange)="searchInput.set($event)"
+        />
+      </p-iconfield>
+    </div>
+  </div>
+
+  @if (usersQuery.isError()) {
+    <div class="error-block" role="alert">
+      <strong>We couldn't load the users.</strong>
+      <p>{{ usersQuery.error().message }}</p>
+      <div class="form-actions">
+        <p-button label="Try again" icon="pi pi-refresh" severity="secondary" (onClick)="retry()" />
+      </div>
+    </div>
+  } @else if (!usersQuery.isPending() && rows().length === 0) {
+    <div class="panel-body">
+      <app-empty-state
+        [heading]="search() === '' ? 'No one holds a seat yet' : 'No one matches'"
+        [message]="search() === '' ? 'Add a user to give them access.' : 'Try a different name or email.'"
+      />
+    </div>
+  } @else {
+    <div class="scroll">
+      <p-table
+        [value]="rows()"
+        [paginator]="true"
+        [rows]="pageSize()"
+        [first]="first()"
+        [rowsPerPageOptions]="pageSizeOptions"
+        [showCurrentPageReport]="true"
+        [currentPageReportTemplate]="pageReport"
+        [loading]="usersQuery.isPending()"
+        [showLoader]="true"
+        dataKey="subject"
+        styleClass="p-datatable-sm"
+        (onPage)="onPage($event)"
+      >
+        <ng-template pTemplate="header">
+          <tr>
+            <th scope="col" pSortableColumn="name">Name <p-sortIcon field="name" /></th>
+            <th scope="col" pSortableColumn="email">Email <p-sortIcon field="email" /></th>
+            <th scope="col" pSortableColumn="groupsText">Groups <p-sortIcon field="groupsText" /></th>
+            <th scope="col" pSortableColumn="status">Status <p-sortIcon field="status" /></th>
+            <!-- Actions column: nothing to sort. -->
+            <th scope="col" class="col-actions"><span class="sr-only">Actions</span></th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-row>
+          <tr data-testid="user-row">
+            <td>{{ row.name }}</td>
+            <td>{{ row.email || '—' }}</td>
+            <td>{{ row.groupsText || '—' }}</td>
+            <td>
+              <span class="status" [class]="row.user.enabled ? 's-approved' : 's-neutral'">{{ row.status }}</span>
+            </td>
+            <td class="col-actions">
+              <p-button icon="pi pi-users" severity="secondary" [text]="true" [rounded]="true" [ariaLabel]="'Edit groups for ' + row.name" (onClick)="editing.set(row)" />
+              <p-button icon="pi pi-sync" severity="secondary" [text]="true" [rounded]="true" [ariaLabel]="'Refresh sessions for ' + row.name" (onClick)="ask('refresh', row)" />
+              <p-button
+                [icon]="row.user.enabled ? 'pi pi-ban' : 'pi pi-check-circle'"
+                [severity]="row.user.enabled ? 'danger' : 'secondary'"
+                [text]="true"
+                [rounded]="true"
+                [ariaLabel]="(row.user.enabled ? 'Disable ' : 'Enable ') + row.name"
+                (onClick)="ask('toggle', row)"
+              />
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  }
+</section>
+
+@if (creating()) {
+  <app-create-user-dialog [groups]="groups()" (created)="onCreated()" (closed)="creating.set(false)" />
+}
+
+@if (editing(); as row) {
+  <app-user-groups-dialog
+    [subject]="row.subject"
+    [userName]="row.name"
+    [groups]="groups()"
+    (saved)="reload()"
+    (closed)="editing.set(null)"
+  />
+}
+
+@if (confirmCopy(); as c) {
+  <app-confirm-dialog
+    [title]="c.title"
+    [message]="c.message"
+    [confirmLabel]="c.label"
+    [danger]="c.danger"
+    [busy]="mutation.isPending()"
+    [error]="mutationError()"
+    (confirm)="confirm()"
+    (close)="pending.set(null)"
+  />
+}
