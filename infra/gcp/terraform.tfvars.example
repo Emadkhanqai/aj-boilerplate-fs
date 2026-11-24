@@ -35,6 +35,13 @@ keycloak_portal_client_id = "your-portal-client"
 # custom domain or load balancer is in front. <origin>/auth/callback is the redirect URI to register.
 # public_origin = "https://app.example.com"
 
+# --- User admin and sign-in history (all optional; see infra/gcp/README.md) ---
+# auth_session_events_enabled            = true    # the Auth service reports session ends to the API (Google ID token, no secret)
+# auth_portal_display_name               = "My App"
+# auth_admin_keycloak_client_id          = "my-app-admin"   # needs the secret <prefix>-<env>-keycloak-admin-client-secret
+# auth_admin_managed_group_paths         = ["/my-app"]
+# auth_admin_allowed_email_domains       = ["example.com"]
+
 # --- Sizing. Defaults suit dev; raise them for staging and prod. ---
 # sql_tier             = "db-custom-2-7680"
 # sql_disk_size_gb     = 20

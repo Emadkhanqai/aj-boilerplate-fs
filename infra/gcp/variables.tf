@@ -209,6 +209,54 @@ variable "auth_admin_api_key_enabled" {
   default     = false
 }
 
+variable "auth_session_events_enabled" {
+  description = <<-EOT
+    Have the Auth service report each session's end to the API (sign-in history shows "Ended"), authenticated by a Google ID
+    token: nothing here is a secret. Grants the Auth service's account `roles/run.invoker` on the API, points
+    `Auth:Portal:SessionEvents:Url` at the API's receiver, and tells the API which audience and caller it accepts
+    (`Integration:AuthBackend:Audience`, `AllowedCallerEmail`). Off by default: with it off no event is queued.
+    (A shared `X-Auth-Events-Key` is not used here on purpose: the API's invoker list is IAM-only, so a call carrying no Google
+    ID token is refused by Cloud Run before the application sees the key.)
+  EOT
+  type        = bool
+  default     = false
+}
+
+variable "auth_portal_display_name" {
+  description = "The name the Auth service's \"No access\" page uses for this portal (Auth:Portal:DisplayName). Empty reads \"this application\"."
+  type        = string
+  default     = ""
+}
+
+variable "auth_admin_keycloak_client_id" {
+  description = <<-EOT
+    Keycloak client id of the DEDICATED admin client behind the Auth service's /internal/admin/users, /groups and /members: a client
+    with a service account holding the realm-management roles view-users, query-users, query-groups and manage-users (not the portal
+    client). Empty leaves those routes answering 501. When set, its secret must already exist in Secret Manager
+    (`auth_admin_keycloak_client_secret_name`), exactly like the entra and keycloak client secrets.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "auth_admin_keycloak_client_secret_name" {
+  description = "Secret Manager secret id holding the admin client's secret. Create it first. Null means <environment prefix>-keycloak-admin-client-secret. Read only when auth_admin_keycloak_client_id is set."
+  type        = string
+  default     = null
+}
+
+variable "auth_admin_managed_group_paths" {
+  description = "Keycloak group paths the admin surface may touch, e.g. [\"/my-app\"]. A seat is a group UNDER one. Empty refuses every group change."
+  type        = list(string)
+  default     = []
+}
+
+variable "auth_admin_allowed_email_domains" {
+  description = "E-mail domains a NEW account may be created for. Empty refuses every creation (deny by default)."
+  type        = list(string)
+  default     = []
+}
+
 # --- Sizing -----------------------------------------------------------------
 
 variable "sql_tier" {

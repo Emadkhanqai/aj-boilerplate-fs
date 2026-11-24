@@ -31,6 +31,13 @@ locals {
 
   entra_client_secret_name    = coalesce(var.entra_client_secret_name, "${local.name}-entra-client-secret")
   keycloak_client_secret_name = coalesce(var.keycloak_client_secret_name, "${local.name}-keycloak-client-secret")
+  # The API's own origin in the deterministic run.app form, for the same reason as public_origin: the API's environment cannot
+  # read its own `uri` (a service cannot depend on itself), and a token's audience must equal what the API compares it to.
+  api_origin = "https://${local.name}-api-${data.google_project.this.number}.${var.region}.run.app"
+
+  auth_admin_keycloak_enabled          = var.auth_admin_keycloak_client_id != ""
+  auth_admin_keycloak_client_secret_id = coalesce(var.auth_admin_keycloak_client_secret_name, "${local.name}-keycloak-admin-client-secret")
+
   auth_secret_ids = merge(
     {
       auth_db_connection = google_secret_manager_secret.auth_db_connection.id
@@ -38,7 +45,8 @@ locals {
       entra_client       = data.google_secret_manager_secret.entra_client.id
       keycloak_client    = data.google_secret_manager_secret.keycloak_client.id
     },
-    var.auth_admin_api_key_enabled ? { admin_api_key = google_secret_manager_secret.auth_admin_api_key[0].id } : {}
+    var.auth_admin_api_key_enabled ? { admin_api_key = google_secret_manager_secret.auth_admin_api_key[0].id } : {},
+    local.auth_admin_keycloak_enabled ? { admin_keycloak_client = data.google_secret_manager_secret.admin_keycloak_client[0].id } : {}
   )
 }
 
@@ -155,6 +163,24 @@ data "google_secret_manager_secret" "entra_client" {
 data "google_secret_manager_secret" "keycloak_client" {
   secret_id  = local.keycloak_client_secret_name
   depends_on = [google_project_service.required]
+}
+
+# Only when the directory admin client is configured; created by the operator, like the two above.
+data "google_secret_manager_secret" "admin_keycloak_client" {
+  count      = local.auth_admin_keycloak_enabled ? 1 : 0
+  secret_id  = local.auth_admin_keycloak_client_secret_id
+  depends_on = [google_project_service.required]
+}
+
+# The session-ended hop: the Auth service calls the API's receiver with a Google ID token minted for the API's origin. The API's
+# invoker list is otherwise the web service's account alone (web.tf), so this one grant is what lets the call through the platform.
+resource "google_cloud_run_v2_service_iam_member" "auth_invokes_api" {
+  count    = var.auth_session_events_enabled ? 1 : 0
+  project  = google_cloud_run_v2_service.api.project
+  location = google_cloud_run_v2_service.api.location
+  name     = google_cloud_run_v2_service.api.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.auth.email}"
 }
 
 # ---------------------------------------------------------------------------
@@ -425,6 +451,69 @@ resource "google_cloud_run_v2_service" "auth" {
               version = "latest"
             }
           }
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.auth_portal_display_name != "" ? [1] : []
+
+        content {
+          name  = "Auth__Portal__DisplayName"
+          value = var.auth_portal_display_name
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.auth_session_events_enabled ? {
+          Auth__Portal__SessionEvents__Url      = "${local.api_origin}/api/integration/auth-backend/session-ended"
+          Auth__Portal__SessionEvents__Audience = local.api_origin
+        } : {}
+
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.auth_admin_keycloak_enabled ? [1] : []
+
+        content {
+          name  = "Auth__Admin__Keycloak__ClientId"
+          value = var.auth_admin_keycloak_client_id
+        }
+      }
+
+      dynamic "env" {
+        for_each = local.auth_admin_keycloak_enabled ? [1] : []
+
+        content {
+          name = "Auth__Admin__Keycloak__ClientSecret"
+
+          value_source {
+            secret_key_ref {
+              secret  = data.google_secret_manager_secret.admin_keycloak_client[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "env" {
+        for_each = { for i, p in var.auth_admin_managed_group_paths : "Auth__Admin__ManagedGroupPaths__${i}" => p }
+
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = { for i, d in var.auth_admin_allowed_email_domains : "Auth__Admin__AllowedEmailDomains__${i}" => d }
+
+        content {
+          name  = env.key
+          value = env.value
         }
       }
 

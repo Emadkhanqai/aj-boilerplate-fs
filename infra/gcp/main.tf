@@ -319,6 +319,20 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.keycloak_portal_client_id
       }
 
+      # The Auth service's session-ended events (sign-in history): accepted from that one service account, by its Google ID token.
+      dynamic "env" {
+        for_each = var.auth_session_events_enabled ? {
+          Integration__AuthBackend__Audience           = local.api_origin
+          Integration__AuthBackend__AllowedCallerEmail = google_service_account.auth.email
+          Integration__AuthBackend__PortalClientId     = var.keycloak_portal_client_id
+        } : {}
+
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
       # Injected from Secret Manager at start, never baked into the image or this file.
       env {
         name = "ConnectionStrings__Default"
