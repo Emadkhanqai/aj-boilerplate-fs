@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "http": {
+      "commandName": "Project",
+      "dotnetRunMessages": true,
+      "launchBrowser": false,
+      "applicationUrl": "http://localhost:5090",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "Auth__PublicOrigin": "http://localhost:4200",
+        "Auth__Cookies__Secure": "false",
+        "Auth__Entra__Authority": "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000",
+        "Auth__Keycloak__BaseUrl": "https://keycloak.localhost",
+        "Auth__Keycloak__TokenEndpointUrl": "http://localhost:8180/realms/default/protocol/openid-connect/token",
+        "ConnectionStrings__Redis": "localhost:6379",
+        "ConnectionStrings__AuthDb": "Server=localhost,1433;Database=Auth;User Id=sa;TrustServerCertificate=True"
+      }
+    }
+  }
+}
