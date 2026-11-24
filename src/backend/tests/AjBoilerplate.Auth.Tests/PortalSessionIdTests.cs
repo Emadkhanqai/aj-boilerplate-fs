@@ -175,8 +175,8 @@ public sealed class SessionIdentityAcrossRefreshTests
 
         public Task DeleteAsync(string sessionKey, string subject, CancellationToken cancellationToken) => inner.DeleteAsync(sessionKey, subject, cancellationToken);
 
-        public Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken) =>
-            inner.EndAsync(sessionKey, subject, cancellationToken);
+        public Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken) =>
+            inner.EndAsync(sessionKey, subject, ending, cancellationToken);
 
         public Task<IReadOnlyCollection<string>> GetSessionKeysForSubjectAsync(string subject, CancellationToken cancellationToken) =>
             inner.GetSessionKeysForSubjectAsync(subject, cancellationToken);
@@ -235,9 +235,13 @@ public sealed class PortalSessionIdEndpointTests : IAsyncLifetime, IDisposable
         builder.Services.AddSingleton(new RolesVersion(new SessionTokenProtector(SessionTokenProtector.GenerateKey())));
         builder.Services.AddSingleton(_ids);
         builder.Services.AddSingleton<IRevokedSessionMarks>(new InMemoryRevokedSessionMarks());
+        builder.Services.AddSingleton(new PortalRegistry(TestConfig.Wrap(options)));
         builder.Services.AddScoped<SessionValidator>();
         builder.Services.AddScoped<SignInService>();
         builder.Services.AddScoped<ForceRefreshHandler>();
+        builder.Services.AddSingleton<IHandoffTicketStore>(new InMemoryHandoffTicketStore(TimeProvider.System));
+        builder.Services.AddSingleton<AjBoilerplate.Auth.Events.GoogleIdTokenVerifier>();
+        builder.Services.AddScoped<HandoffService>();
 
         _app = builder.Build();
         _app.MapAuthEndpoints();

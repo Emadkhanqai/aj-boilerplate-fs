@@ -274,7 +274,7 @@ public sealed class CallbackAndValidateEndpointTests
 
 public sealed class ProgramCompositionTests
 {
-    private static string[] Args(params string[] overrides)
+    internal static string[] Args(params string[] overrides)
     {
         var settings = new Dictionary<string, string>
         {
@@ -310,7 +310,29 @@ public sealed class ProgramCompositionTests
         var routes = Routes(app);
 
         Assert.Equal(
-            ["/auth/callback", "/auth/login", "/auth/logout", "/auth/roles-version", "/auth/validate", "/healthz", "/internal/admin/users/{subject}/refresh", "/readyz"],
+            [
+                "/auth/callback",
+                "/auth/events",
+                "/auth/handoff",
+                "/auth/handoff/redeem",
+                "/auth/handoff/redeem",
+                "/auth/login",
+                "/auth/logout",
+                "/auth/no-access",
+                "/auth/roles-version",
+                "/auth/validate",
+                "/healthz",
+                "/internal/admin/groups",
+                "/internal/admin/members",
+                "/internal/admin/users",
+                "/internal/admin/users",
+                "/internal/admin/users/{subject}/disable",
+                "/internal/admin/users/{subject}/enable",
+                "/internal/admin/users/{subject}/groups",
+                "/internal/admin/users/{subject}/groups",
+                "/internal/admin/users/{subject}/refresh",
+                "/readyz",
+            ],
             routes.Order(StringComparer.Ordinal).ToList());
     }
 

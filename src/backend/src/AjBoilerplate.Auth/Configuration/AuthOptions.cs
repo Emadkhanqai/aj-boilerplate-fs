@@ -30,9 +30,33 @@ public sealed class AuthOptions
     [ValidateObjectMembers]
     public KeycloakOptions Keycloak { get; set; } = new();
 
-    /// <summary>This app's Keycloak client.</summary>
+    /// <summary>
+    /// This app's Keycloak client: portal #0. Its host is <see cref="PublicOrigin"/>'s and its logged-out page is
+    /// <see cref="LoggedOutPath"/>.
+    /// </summary>
     [ValidateObjectMembers]
     public PortalOptions Portal { get; set; } = new();
+
+    /// <summary>
+    /// OPTIONAL further portals served by this one Auth service (<c>Auth:Portals:N</c>), each on its own host. Empty (the
+    /// default) is a single-portal installation and the hand-off has nobody to hand off to. When non-empty the portal of a
+    /// request is chosen by its forwarded host; see <see cref="ForwardedHostHeader"/> and <see cref="Portal"/>.
+    /// </summary>
+    public IList<PortalOptions> Portals { get; init; } = [];
+
+    /// <summary>
+    /// The header carrying the browser-facing host, set by the gateway. Read ONLY when <see cref="Portals"/> is non-empty,
+    /// to choose the portal; the redirect URI is always built from the registered portal's configured origin, never from this.
+    /// </summary>
+    public string ForwardedHostHeader { get; set; } = "X-Forwarded-Host";
+
+    /// <summary>Delivery tuning for the session-ended outbox.</summary>
+    [ValidateObjectMembers]
+    public SessionEndDeliveryOptions SessionEndDelivery { get; set; } = new();
+
+    /// <summary>The Google-signed push of Keycloak user changes (<c>POST /auth/events</c>).</summary>
+    [ValidateObjectMembers]
+    public EventsOptions Events { get; set; } = new();
 
     [ValidateObjectMembers]
     public AdminOptions Admin { get; set; } = new();
@@ -71,6 +95,10 @@ public sealed class AuthSessionOptions
     /// <summary>How long a pending sign-in (PKCE verifier + state) may take.</summary>
     [Range(typeof(TimeSpan), "00:01:00", "00:30:00")]
     public TimeSpan LoginStateLifetime { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>How long a portal hand-off ticket may wait to be redeemed (single use, in Redis).</summary>
+    [Range(typeof(TimeSpan), "00:00:05", "00:05:00")]
+    public TimeSpan HandoffTicketLifetime { get; set; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
     /// Single-flight refresh lock lifetime. It is also what a request that LOST the lock waits for
@@ -220,22 +248,166 @@ public sealed class KeycloakOptions
         : new Uri(TokenEndpointUrl);
 }
 
-/// <summary>This app's own Keycloak client (the one whose roles the API reads).</summary>
+/// <summary>
+/// A portal this Auth service signs users in to: its Keycloak client, and (for portals beyond #0) its host. Portal #0
+/// is <see cref="AuthOptions.Portal"/> and takes its host from <see cref="AuthOptions.PublicOrigin"/>.
+/// </summary>
 public sealed class PortalOptions
 {
+    /// <summary>The Keycloak client whose roles the portal's API reads. Also the key the hand-off names a portal by.</summary>
     [Required]
     public string ClientId { get; set; } = string.Empty;
 
     [Required]
     public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>Browser-facing host, bare (no scheme, no port), lower-case. Required for <c>Auth:Portals:N</c>; ignored for portal #0.</summary>
+    public string Host { get; set; } = string.Empty;
+
+    /// <summary>Where a plain logout lands on this portal. Empty uses <see cref="AuthOptions.LoggedOutPath"/>. Ignored for portal #0.</summary>
+    public string LoggedOutPath { get; set; } = string.Empty;
+
+    /// <summary>The name pages use for this portal ("You have no access to {DisplayName}"). Empty reads "this application".</summary>
+    public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>Where this portal is told its sessions ended. Not configured: nothing is queued for this portal.</summary>
+    public SessionEventsOptions SessionEvents { get; set; } = new();
+
+    /// <summary>Set by <see cref="PortalRegistry"/> for portal #0 (the whole configured <c>PublicOrigin</c>, port and scheme included).</summary>
+    internal string? OriginOverride { get; set; }
+
+    /// <summary>Browser-facing origin: the redirect URI is this plus <c>/auth/callback</c>, and a logout POST must come from it.</summary>
+    public string Origin => OriginOverride ?? $"https://{Host}";
+}
+
+/// <summary>
+/// Where one portal receives <c>session.ended</c> events (docs/auth/session-ended-contract.md). Not configured (no <see cref="Url"/>):
+/// nothing is queued for that portal, so a portal that has not deployed its receiver is not sent events it would answer 404 to.
+/// </summary>
+public sealed class SessionEventsOptions
+{
+    /// <summary>The portal backend's receiver, e.g. <c>https://api.example.com/api/integration/auth-backend/session-ended</c>.</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>The Google ID token audience, when the receiver authenticates with one. Empty: the origin of <see cref="Url"/>.</summary>
+    public string Audience { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Shared secret sent as <c>X-Auth-Events-Key</c>. When set it is what authenticates the call (a Google ID token is then not
+    /// minted); the receiver compares it in constant time. Comes from the secrets provider, never from a file.
+    /// </summary>
+    public string Key { get; set; } = string.Empty;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(Url);
+
+    public bool UsesKey => !string.IsNullOrWhiteSpace(Key);
+
+    public string? ResolvedAudience =>
+        !string.IsNullOrWhiteSpace(Audience)
+            ? Audience.Trim()
+            : Uri.TryCreate(Url, UriKind.Absolute, out var url) ? url.GetLeftPart(UriPartial.Authority) : null;
+}
+
+/// <summary>Delivery tuning for the session-ended outbox. The defaults are USP's.</summary>
+public sealed class SessionEndDeliveryOptions
+{
+    [Range(typeof(TimeSpan), "00:00:01", "00:10:00")]
+    public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    [Range(1, 500)]
+    public int BatchSize { get; set; } = 50;
+
+    /// <summary>How long a claimed event is reserved for the claimant; a crashed instance's claim simply runs out.</summary>
+    [Range(typeof(TimeSpan), "00:00:30", "01:00:00")]
+    public TimeSpan ClaimLease { get; set; } = TimeSpan.FromMinutes(2);
+
+    [Range(typeof(TimeSpan), "00:00:01", "00:01:00")]
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    [Range(typeof(TimeSpan), "00:00:01", "01:00:00")]
+    public TimeSpan InitialRetryDelay { get; set; } = TimeSpan.FromSeconds(15);
+
+    [Range(typeof(TimeSpan), "00:00:01", "06:00:00")]
+    public TimeSpan MaxRetryDelay { get; set; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>An event still undelivered this long after it was queued is abandoned and logged at Error.</summary>
+    [Range(typeof(TimeSpan), "00:10:00", "30.00:00:00")]
+    public TimeSpan MaxAge { get; set; } = TimeSpan.FromHours(48);
+
+    /// <summary>How long a delivered or abandoned event stays before it is purged.</summary>
+    [Range(typeof(TimeSpan), "01:00:00", "90.00:00:00")]
+    public TimeSpan Retention { get; set; } = TimeSpan.FromDays(7);
+}
+
+/// <summary>
+/// The Google-signed push of Keycloak user changes to <c>POST /auth/events</c> (Pub/Sub, OIDC token). Disabled (404) unless both
+/// values are set.
+/// </summary>
+public sealed class EventsOptions
+{
+    /// <summary>The ID token audience the push is configured with; compared exactly.</summary>
+    public string Audience { get; set; } = string.Empty;
+
+    /// <summary>The Pub/Sub push service account's e-mail.</summary>
+    public string PushServiceAccount { get; set; } = string.Empty;
+
+    public bool IsEnabled => !string.IsNullOrWhiteSpace(Audience) && !string.IsNullOrWhiteSpace(PushServiceAccount);
 }
 
 public sealed class AdminOptions
 {
-    /// <summary>Shared secret for <c>/internal/admin/*</c>, sent as <c>X-Admin-Api-Key</c>. Empty disables the endpoints (404).</summary>
+    /// <summary>Shared secret for <c>/internal/admin/*</c>, sent as <c>X-Admin-Api-Key</c>. Empty disables the key (see <see cref="IsEnabled"/>).</summary>
     public string ApiKey { get; set; } = string.Empty;
 
-    public bool IsEnabled => !string.IsNullOrWhiteSpace(ApiKey);
+    /// <summary>
+    /// OPTIONAL alternative caller authentication: a Google ID token whose <c>aud</c> is this value and whose e-mail is one of
+    /// <see cref="AllowedCallers"/> (signature always verified). Accepted IN ADDITION to the key; both empty is not a way in.
+    /// </summary>
+    public string Audience { get; set; } = string.Empty;
+
+    public IList<string> AllowedCallers { get; init; } = [];
+
+    /// <summary>
+    /// Keycloak group paths this surface may administer, e.g. <c>/my-app</c>. A seat is a group UNDER one of them
+    /// (<c>/my-app/editors</c>); a path outside every managed path is refused and nothing is changed.
+    /// </summary>
+    public IList<string> ManagedGroupPaths { get; init; } = [];
+
+    /// <summary>
+    /// E-mail domains a NEW account may be created for. DENY BY DEFAULT: empty refuses every creation.
+    /// </summary>
+    public IList<string> AllowedEmailDomains { get; init; } = [];
+
+    /// <summary>The Keycloak Admin REST API client behind the directory routes.</summary>
+    [ValidateObjectMembers]
+    public KeycloakAdminOptions Keycloak { get; set; } = new();
+
+    public bool GoogleCallerConfigured => !string.IsNullOrWhiteSpace(Audience) && AllowedCallers.Count > 0;
+
+    /// <summary>The whole <c>/internal/admin</c> group exists only when a caller can authenticate to it.</summary>
+    public bool IsEnabled => !string.IsNullOrWhiteSpace(ApiKey) || GoogleCallerConfigured;
+}
+
+/// <summary>
+/// A dedicated Keycloak client with a service account (client-credentials), holding the realm-management roles
+/// <c>view-users</c>, <c>manage-users</c> and <c>query-groups</c> / <c>query-users</c>. NOT this app's own client.
+/// </summary>
+public sealed class KeycloakAdminOptions
+{
+    public string ClientId { get; set; } = string.Empty;
+
+    public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>Overrides <c>Auth:Keycloak:BaseUrl</c> for the admin API. Empty uses it.</summary>
+    public string BaseUrl { get; set; } = string.Empty;
+
+    /// <summary>Overrides <c>Auth:Keycloak:Realm</c> for the admin API. Empty uses it.</summary>
+    public string Realm { get; set; } = string.Empty;
+
+    [Range(typeof(TimeSpan), "00:00:01", "00:01:00")]
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 }
 
 public sealed class AuthCookieOptions
@@ -246,4 +418,7 @@ public sealed class AuthCookieOptions
     public string SessionName => Secure ? "__Host-app_sid" : "app_sid";
 
     public string LoginName => Secure ? "__Host-app_login" : "app_login";
+
+    /// <summary>One-shot marker set by a hand-off redeem that found no role, spent by the first <c>/auth/no-access</c> view. Carries no identity.</summary>
+    public string NoAccessName => Secure ? "__Host-app_noaccess" : "app_noaccess";
 }

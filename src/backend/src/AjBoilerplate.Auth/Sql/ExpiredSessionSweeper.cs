@@ -66,7 +66,7 @@ internal sealed partial class ExpiredSessionSweeper : BackgroundService
         int deleted;
         do
         {
-            deleted = await _sessions.DeleteExpiredAsync(BatchSize, _absoluteLifetime, cancellationToken);
+            deleted = await _sessions.EndExpiredAsync(BatchSize, _absoluteLifetime, cancellationToken);
             total += deleted;
         }
         while (deleted == BatchSize && !cancellationToken.IsCancellationRequested);
@@ -77,7 +77,7 @@ internal sealed partial class ExpiredSessionSweeper : BackgroundService
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Swept {Count} expired session row(s).")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "Swept {Count} expired session row(s); each ended with its session-ended event where the portal receives them.")]
     private static partial void LogSwept(ILogger logger, int count);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Expired-session sweep failed; retrying on the next tick.")]

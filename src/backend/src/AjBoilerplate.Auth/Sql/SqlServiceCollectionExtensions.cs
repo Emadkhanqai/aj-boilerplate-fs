@@ -2,6 +2,7 @@ using AjBoilerplate.Auth.Abstractions;
 using AjBoilerplate.Auth.Configuration;
 using AjBoilerplate.Auth.Sessions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 
@@ -28,6 +29,8 @@ public static class SqlServiceCollectionExtensions
                 .MigrationsHistoryTable(AuthDbContext.HistoryTable, AuthDbContext.Schema)
                 .EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(2), errorNumbersToAdd: null)));
 
+        // SqlSessionStore stamps each queued session-ended event with the portal-facing session id and routes it by portal.
+        services.TryAddSingleton<PortalRegistry>();
         services.AddSingleton<SqlSessionStore>();
         services.AddSingleton<ISessionStore>(sp => new DurableSessionStore(
             sp.GetRequiredService<SqlSessionStore>(),
@@ -36,6 +39,10 @@ public static class SqlServiceCollectionExtensions
         {
             IdleTimeout = sp.GetRequiredService<IOptions<AuthOptions>>().Value.Session.IdleTimeout,
         });
+
+        // The outbox lives beside the sessions because it is written in the same transaction as their delete. Its sender and
+        // dispatch loop are registered by AddSessionEndedDelivery.
+        services.AddSingleton<ISessionEndedOutbox, SqlSessionEndedOutbox>();
 
         services.AddHostedService<ExpiredSessionSweeper>();
         services.AddHealthChecks().AddCheck<AuthDbHealthCheck>("auth-db", tags: ["ready"]);

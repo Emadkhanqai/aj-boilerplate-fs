@@ -1,6 +1,7 @@
 using AjBoilerplate.Auth.Abstractions;
 using AjBoilerplate.Auth.Configuration;
 using AjBoilerplate.Auth.Endpoints;
+using AjBoilerplate.Auth.Events;
 using AjBoilerplate.Auth.Security;
 using AjBoilerplate.Auth.Sessions;
 using Microsoft.AspNetCore.Builder;
@@ -9,6 +10,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AjBoilerplate.Auth.Tests;
 
@@ -28,6 +30,12 @@ internal sealed class EndpointHost : IAsyncDisposable
     public FakeEntra Entra { get; } = new();
 
     public FakeKeycloak Keycloak { get; } = new();
+
+    public FakeDirectoryAdmin Directory { get; } = new();
+
+    public InMemoryHandoffTicketStore Tickets { get; } = new(TimeProvider.System);
+
+    public SigningKeys Google { get; } = new();
 
     public CapturingProvider Logs { get; } = new();
 
@@ -67,6 +75,13 @@ internal sealed class EndpointHost : IAsyncDisposable
         builder.Services.AddScoped<SessionValidator>();
         builder.Services.AddScoped<SignInService>();
         builder.Services.AddScoped<ForceRefreshHandler>();
+        builder.Services.AddSingleton(sp => new PortalRegistry(sp.GetRequiredService<IOptions<AuthOptions>>()));
+        builder.Services.AddSingleton<IHandoffTicketStore>(Tickets);
+        builder.Services.AddSingleton<IDirectoryAdmin>(Directory);
+        builder.Services.AddSingleton(Google.Factory());
+        builder.Services.AddSingleton<GoogleIdTokenVerifier>();
+        builder.Services.AddScoped<HandoffService>();
+        builder.Services.AddScoped<UserAdminService>();
 
         _app = builder.Build();
         _app.MapAuthEndpoints();
@@ -107,6 +122,7 @@ internal sealed class EndpointHost : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Google.Dispose();
         Http?.Dispose();
         if (_app is not null)
         {

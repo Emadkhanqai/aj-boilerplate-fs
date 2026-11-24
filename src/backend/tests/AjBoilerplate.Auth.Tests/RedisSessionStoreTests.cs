@@ -208,3 +208,18 @@ public sealed class RedisRevokedSessionMarksTests : IAsyncLifetime
         _redis = await ConnectionMultiplexer.ConnectAsync(Environment.GetEnvironmentVariable(RedisFactAttribute.Variable)!);
     }
 }
+
+/// <summary>A <see cref="FactAttribute"/> that runs only against a real SQL Server AND a real Redis, named by <c>AUTH_TEST_SQL</c> and <c>AUTH_TEST_REDIS</c>.</summary>
+public sealed class DurableFactAttribute : FactAttribute
+{
+    public const string SqlVariable = "AUTH_TEST_SQL";
+
+    public DurableFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SqlVariable))
+            || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RedisFactAttribute.Variable)))
+        {
+            Skip = $"{SqlVariable} and {RedisFactAttribute.Variable} must both be set; these tests need a real SQL Server and Redis.";
+        }
+    }
+}

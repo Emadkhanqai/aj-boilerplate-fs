@@ -88,7 +88,8 @@ internal sealed class RedisSessionStore : ISessionStore
             sub,
             client,
             Field(SessionFields.ForceRefresh) == "1",
-            DateTimeOffset.FromUnixTimeSeconds(created));
+            DateTimeOffset.FromUnixTimeSeconds(created),
+            string.IsNullOrEmpty(Field(SessionFields.RefreshVia)) ? null : Field(SessionFields.RefreshVia));
     }
 
     private string? ReadToken(string? stored) =>
@@ -113,6 +114,7 @@ internal sealed class RedisSessionStore : ISessionStore
             SessionFields.ForceRefresh, session.ForceRefresh ? "1" : "0",
             SessionFields.CreatedAt, session.CreatedAt.ToUnixTimeSeconds(),
             SessionFields.LastSeen, _time.GetUtcNow().ToUnixTimeSeconds(),
+            SessionFields.RefreshVia, session.RefreshVia ?? string.Empty,
         ];
 
         await Db.ScriptEvaluateAsync(
@@ -162,7 +164,7 @@ internal sealed class RedisSessionStore : ISessionStore
         await tx.ExecuteAsync();
     }
 
-    public async Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken)
+    public async Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken)
     {
         var tx = Db.CreateTransaction();
         var deleted = tx.KeyDeleteAsync(RedisKeys.Session(sessionKey));

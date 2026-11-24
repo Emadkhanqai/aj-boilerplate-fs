@@ -83,9 +83,9 @@ public sealed partial class DurableSessionStore : ISessionStore
         await _cache.DeleteAsync(sessionKey, subject, cancellationToken);
     }
 
-    public async Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken)
+    public async Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken)
     {
-        var ended = await _database.EndAsync(sessionKey, subject, cancellationToken);
+        var ended = await _database.EndAsync(sessionKey, subject, ending, cancellationToken);
         await _cache.DeleteAsync(sessionKey, subject, cancellationToken);
         return ended;
     }

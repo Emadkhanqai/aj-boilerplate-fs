@@ -22,6 +22,64 @@ namespace AjBoilerplate.Auth.Sql.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("AjBoilerplate.Auth.Sql.SessionEndedEventRow", b =>
+                {
+                    b.Property<Guid>("EventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("AbandonedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("int");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("nvarchar(256)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset?>("DeliveredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Detail")
+                        .IsRequired()
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("LastOutcome")
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("SessionId")
+                        .IsRequired()
+                        .HasColumnType("char(32)");
+
+                    b.Property<DateTimeOffset?>("SessionStartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("EventId");
+
+                    b.HasIndex("NextAttemptAt")
+                        .HasDatabaseName("IX_SessionEndedOutbox_Pending")
+                        .HasFilter("[DeliveredAt] IS NULL AND [AbandonedAt] IS NULL");
+
+                    b.ToTable("SessionEndedOutbox", "auth");
+                });
+
             modelBuilder.Entity("AjBoilerplate.Auth.Sql.SessionRow", b =>
                 {
                     b.Property<string>("SessionKey")
@@ -54,6 +112,10 @@ namespace AjBoilerplate.Auth.Sql.Migrations
 
                     b.Property<DateTimeOffset>("LastSeenAt")
                         .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RefreshVia")
+                        .HasColumnType("char(43)")
+                        .UseCollation("Latin1_General_BIN2");
 
                     b.Property<string>("Subject")
                         .IsRequired()

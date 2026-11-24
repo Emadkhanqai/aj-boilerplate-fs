@@ -32,10 +32,21 @@ public interface ISessionStore
     Task StampSignInTimeAsync(string sessionKey, DateTimeOffset signedInAt, CancellationToken cancellationToken);
 
     /// <summary>Deletes the session and removes it from its subject's index.</summary>
+    /// <remarks>
+    /// Housekeeping only. A session that ENDS (logout, expiry, a definitive verdict about the user) goes through
+    /// <see cref="EndAsync"/>, which is what tells the portal. A delete reports nothing to anyone.
+    /// </remarks>
     Task DeleteAsync(string sessionKey, string subject, CancellationToken cancellationToken);
 
-    /// <summary>Ends the session (logout, expiry, a definitive verdict). True when this call removed it.</summary>
-    Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken);
+    /// <summary>
+    /// Ends the session: deletes it as <see cref="DeleteAsync"/> does and, where the store keeps the session-ended outbox (SQL),
+    /// queues the event for the session's portal IN THE SAME TRANSACTION as the delete.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> when this call removed the session; <c>false</c> when it was already gone. Only a call that removed the row queues
+    /// an event, so two paths ending one session concurrently (a logout racing the sweeper) produce one event, not two.
+    /// </returns>
+    Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken);
 
     Task<IReadOnlyCollection<string>> GetSessionKeysForSubjectAsync(string subject, CancellationToken cancellationToken);
 
@@ -66,6 +77,15 @@ public interface ILoginStateStore
 
     /// <summary>Atomically reads and deletes: a state value is usable exactly once.</summary>
     Task<LoginState?> TakeAsync(string state, CancellationToken cancellationToken);
+}
+
+/// <summary>Portal hand-off tickets. Keys are SHA-256 hashes of the ticket value, never the value itself.</summary>
+public interface IHandoffTicketStore
+{
+    Task SaveAsync(string ticketKey, HandoffTicket ticket, TimeSpan lifetime, CancellationToken cancellationToken);
+
+    /// <summary>Atomically reads and deletes: a ticket is usable exactly once.</summary>
+    Task<HandoffTicket?> TakeAsync(string ticketKey, CancellationToken cancellationToken);
 }
 
 /// <summary>Distributed single-flight lock (<c>SET NX PX</c> + compare-and-delete).</summary>
