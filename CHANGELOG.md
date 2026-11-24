@@ -69,6 +69,141 @@ Nothing yet.
 
 ---
 
+## [1.0.0] — 2026-11-24
+
+**A major release, because sign-in was replaced and configuration keys changed.** If you cloned
+0.1.x and kept its authentication, you cannot take this release by merging; read
+[Upgrade steps from 0.1.x](#upgrade-steps-from-01x) first. If you have not touched the
+authentication code, the steps are mostly configuration.
+
+The short version: **the browser no longer holds a token.** Sign-in is now a server-side flow run
+by a new Auth service, nginx in the web container is the gateway, and the API only ever sees
+Keycloak JWTs. The reasoning is in [ADR-0012](docs/adr/0012-gateway-session-auth.md) and the model
+is in [docs/auth/](docs/auth/README.md).
+
+### Breaking changes
+
+- **Browser-side OIDC is gone.** The SPA no longer signs in against an identity provider, holds a
+  token, refreshes one, or attaches `Authorization`. `libs/auth` has two providers now:
+  `gateway` (sign-in is a navigation to `/auth/login`) and `dev` (the role picker). The OIDC
+  provider, its callback page and every stored token are deleted. *If you ignore this:* any code you
+  wrote against the old provider, token seams (`AUTH_TOKEN_PROVIDER`, `TOKEN_REFRESHER`) or
+  `/auth/callback` route no longer compiles or never runs.
+- **Web container runtime configuration changed.** `AUTH_MODE` is now `gateway` (default) or `dev`;
+  it was `dev` (default) or `oidc`. **`AUTH_MODE=oidc` now stops the container at start-up.**
+  `OIDC_CLIENT_ID`, `OIDC_AUTHORITY` and `OIDC_SCOPE` are removed. New: `AUTH_PROVIDER`
+  (`embedded` | `usp`), `AUTH_UPSTREAM`, and `API_UPSTREAM` is now an environment variable instead
+  of a hard-coded `proxy_pass`. `src/frontend/nginx.conf` is replaced by three templates in
+  `src/frontend/docker/nginx/`, chosen at start.
+- **A container that was serving the app now answers `401`/`302` until a session exists.** With the
+  default `AUTH_PROVIDER=embedded`, every request to `/` and `/api/` is gated by the Auth service.
+  Run `AUTH_MODE=dev` for the old ungated role-picker behaviour, local use only.
+- **API: direct cloud tokens are no longer accepted.** The `Authentication:GoogleCloudIdentity:*`
+  and `Authentication:EntraId:*` schemes are removed, together with `Keycloak:Realm` and
+  `Keycloak:ClientSecret`, which nothing read. The API now validates only Keycloak JWTs whose `azp`
+  equals `Keycloak:ClientId`. *If you ignore this:* a bearer token from Google or Entra is rejected
+  with 401, and the removed keys are silently ignored.
+- **API: new start-up refusals outside Development.** A plaintext `Keycloak:JwksUri` stops the API
+  unless you set the new `Keycloak:AllowInsecureJwksTransport=true`; an empty `JwksUri` stops it
+  unless `Keycloak:AllowDiscoveryFallback=true`; an `Auth:Mode` other than `gateway` stops it.
+- **API: deny by default.** A fallback policy now requires an authenticated caller on every
+  endpoint that declares nothing. The three health endpoints opt out with `AllowAnonymous`. If you
+  added an endpoint outside a controller, it now answers 401 until you decide its policy.
+- **API: policies are "a seat OR a permission".** `ReadAccess`, `WriteAccess` and `AdminAccess` are
+  satisfied by the role hierarchy or by `items:read`, `items:write` or `admin:manage`. A role key
+  the application does not recognise is dropped and logged once, never granted.
+- **API: the rate limiter runs after authentication** and partitions on the user's subject. Before,
+  every caller behind the gateway shared one bucket keyed by the proxy's address.
+- **`CLOUD_PROVIDER` no longer selects an identity issuer.** It selects the secrets provider and the
+  `infra/` tree. [ADR-0002](docs/adr/0002-dual-cloud-provider-behind-one-switch.md)'s identity half
+  is superseded by ADR-0012 (a note sits at its top; its body is unchanged).
+- **New database objects.** The app database gets an `AuthenticationEvents` table (migration
+  `AddAuthenticationEvents`), and the Auth service needs its own database with schema `auth`, applied
+  by its own migration. Neither runs at start-up.
+- **Root `docker-compose.yml` has new services** (`keycloak`, `auth-migrate`, `auth`) and the API now
+  waits for Keycloak. The old `OIDC_*` and `Authentication__*` entries are gone from `.env.example`.
+- **Generated API types moved.** `npm run generate:api` now reads `docs/api/openapi.json` and writes
+  `libs/data-access/api-types/src/lib/generated.ts`. The hand-written `types.ts` stays for the
+  sample `Item` shapes, because the generated ones are all optional.
+
+### Added
+
+- **`AjBoilerplate.Auth`**, a separate ASP.NET Core host: Authorization Code + PKCE sign-in against
+  Entra ID, RFC 8693 token exchange at Keycloak, encrypted sessions in SQL Server with Redis in front,
+  8 h idle and 12 h absolute lifetimes, single-flight refresh, `/auth/validate`, a roles-version
+  endpoint, a revoked marker, and an admin force-refresh endpoint. `AjBoilerplate.Auth.Tests` and an
+  architecture test that keeps it independent of the layered API.
+- **`AUTH_PROVIDER=embedded|usp`.** `embedded` runs your own Auth service. `usp` is for projects
+  inside the Al Jazeera USP platform: the shared gateway and auth-backend do the job and **you do not
+  deploy the Auth service**.
+- **`AUTH_MODE=gateway|dev`** and the nginx gateway: `auth_request`, JWT injection, 404 on
+  `/auth/validate` and `/internal/`, security headers with a CSP nonce.
+- **`GET /api/v1/me`**, returning roles, capability flags and `permissions`. (0.1.x documented it as
+  something you would add.)
+- **API identity layer**: JWKS pre-warm, seats and permissions (`ApplicationRoles`, `Permissions`,
+  `RoleCapabilities`, `SeatOrPermission`), and `SignInRecordingMiddleware`, which records one row per
+  gateway session.
+- **SPA behaviour**: gateway auto sign-in with a five-minute loop brake, a role-change watcher
+  (polls every 15 s while the tab is visible), an access-revoked dialog, and an "access check
+  unavailable" page.
+- **A local sign-in stack with no Microsoft tenant**: the bundled Keycloak realm
+  (`infra/keycloak/realm-aj-boilerplate.json`, dev-only secrets) and seeded users `admin`, `editor`,
+  `viewer` and `noaccess`.
+- **Documentation**: [`docs/auth/`](docs/auth/README.md) (overview, setup, troubleshooting, contract)
+  and ADR-0012. The root `README.md` was rewritten around a five-minute quickstart.
+
+### Changed
+
+- Auth service defaults equal the Al Jazeera USP staging Entra values (scopes
+  `openid profile offline_access User.Read`, `RequestOwnClientIdScope=false`, `SubjectIssuer=oidc`).
+  Azure AD B2C stays available by configuration.
+- A patched `System.Security.Cryptography.Pkcs` is pinned. `Microsoft.Data.SqlClient` 6.1.1 pulls a
+  version that now carries two advisories, which fail restore under warnings-as-errors.
+
+### Removed
+
+- The browser OIDC client, its stored tokens, the `/auth/callback` SPA route and the `OIDC_*`
+  variables.
+- The API's `Authentication:GoogleCloudIdentity` and `Authentication:EntraId` schemes, and
+  `Keycloak:Realm` and `Keycloak:ClientSecret`.
+- `src/frontend/nginx.conf`.
+
+### Not in this release
+
+- **Nothing deploys the Auth service, the web container or Keycloak.** `infra/` and `deploy.yml`
+  still provision and roll out the API, its database, Redis and secrets only. Projects using
+  `embedded` deploy the rest themselves.
+- **No real Entra tenant has been exercised in this repository.** The local stack replaces Entra with
+  a second Keycloak client. See [docs/auth/setup.md](docs/auth/setup.md).
+
+### Upgrade steps from 0.1.x
+
+1. **Decide your provider.** Outside USP: `AUTH_PROVIDER=embedded`, and you will deploy the Auth
+   service. Inside the Al Jazeera USP platform: `AUTH_PROVIDER=usp`, and ask the USP platform team to
+   onboard your host and client (see [setup, section 3](docs/auth/setup.md#3-onboarding-into-usp-auth_providerusp)).
+2. **Web container.** Replace `AUTH_MODE=oidc` with `gateway`; delete `OIDC_*`; set `AUTH_PROVIDER`,
+   `API_UPSTREAM` and (for `embedded`) `AUTH_UPSTREAM`. Take `src/frontend/docker/` and the new
+   `Dockerfile` wholesale, and remove `nginx.conf`.
+3. **API configuration.** Delete `Authentication__*`, `Keycloak__Realm` and `Keycloak__ClientSecret`.
+   Set `Keycloak__ValidIssuer`, `Keycloak__JwksUri` (https) and `Keycloak__ClientId`. If your
+   Keycloak serves its JWKS over http, decide deliberately about
+   `Keycloak__AllowInsecureJwksTransport`.
+4. **Keycloak.** The portal client needs token exchange, client roles `admin`/`editor`/`viewer`
+   (plus any permissions) and a flat `roles` claim mapper. See
+   [setup, section 2b](docs/auth/setup.md#2b-keycloak).
+5. **Migrations.** Apply `AddAuthenticationEvents` to the app database. For `embedded`, create the
+   Auth database and apply the Auth service's migration (`docker compose` does this with
+   `auth-migrate`).
+6. **Frontend.** If you customised `libs/auth`, re-apply your changes onto the `gateway` provider;
+   the token seams are gone. Run `npm run generate:api` and commit the result.
+7. **Compose and CI.** Take the new root `docker-compose.yml`. Add the Auth service image build and
+   deploy to your pipeline if you use `embedded`; the boilerplate's `deploy.yml` does not.
+8. **ADRs.** Continue your own series at the next free number after `0012`.
+9. Run the gate. Then sign in as a user with a role, as one without, and remove a role in Keycloak to
+   watch the access-revoked dialog appear.
+
+---
+
 ## [0.1.1] — 2026-09-01
 
 A patch release, and every entry in it is the same story: a tree that was green in August
@@ -231,7 +366,9 @@ Stated here rather than discovered later:
   repositories but three files still need a human on every run, and nothing checks the
   published repositories for drift after the fact.
 
-[Unreleased]: https://github.com/<your-org>/aj-boilerplate-fs/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/<your-org>/aj-boilerplate-fs/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/<your-org>/aj-boilerplate-fs/compare/v0.1.1...v1.0.0
+[0.1.1]: https://github.com/<your-org>/aj-boilerplate-fs/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/<your-org>/aj-boilerplate-fs/releases/tag/v0.1.0
 
 ### Also in this first tag

@@ -22,13 +22,16 @@ git clone https://github.com/<your-org>/aj-boilerplate-fs.git
 cd aj-boilerplate-fs
 
 cp .env.example .env          # then set MSSQL_SA_PASSWORD; nothing else is required
-docker compose up --build     # database + API + web, one command
+docker compose up --build     # database, Redis, Keycloak, Auth service, API and web: one command
 ```
 
 That brings up the whole stack: the web app on <http://localhost:4200>, the API on
-<http://localhost:8080> with its OpenAPI UI at `/swagger`, and SQL Server with the
-migrations already applied. `.env.example` documents every environment variable the
-repository reads and what each is for.
+<http://localhost:8080> with its OpenAPI UI at `/swagger` (protected endpoints need a session),
+SQL Server with the migrations already applied, and a local Keycloak that stands in for Microsoft
+Entra ID, so you can sign in as `admin`, `editor`, `viewer` or `noaccess` with no tenant (see the
+[README](README.md#quickstart-about-5-minutes)). `.env.example` documents every environment variable
+the repository reads and what each is for. If something does not start, see
+[docs/auth/troubleshooting.md](docs/auth/troubleshooting.md).
 
 Working on one stack only? The per-stack instructions are in
 [src/backend/README.md](src/backend/README.md) and
