@@ -70,6 +70,12 @@ public static class AuthenticationSetup
             authBuilder.AddJwtBearer();
         }
 
+        // The Auth service's session-ended events: two additional, opt-in-per-endpoint schemes (a shared key,
+        // or a Google ID token). Nothing but that one controller names them, so they never touch Keycloak's.
+        authBuilder
+            .AddScheme<AuthenticationSchemeOptions, AuthBackendEventsKeyHandler>(AuthBackendAuthenticationDefaults.KeySchemeName, _ => { })
+            .AddAuthBackendGoogleIdToken(configuration);
+
         services.AddSingleton<IClaimsTransformation, KeycloakRoleClaimsTransformation>();
 
         AddAuthorizationPolicies(services);
@@ -214,7 +220,12 @@ public static class AuthenticationSetup
                 .RequireAssertion(ctx => CapabilitiesOf(ctx.User).CanWrite))
             .AddPolicy(Policies.AdminAccess, policy => policy
                 .RequireAuthenticatedUser()
-                .RequireAssertion(ctx => CapabilitiesOf(ctx.User).CanAdminister));
+                .RequireAssertion(ctx => CapabilitiesOf(ctx.User).CanAdminister))
+            // The identity's authentication TYPE is checked too: a person's token can carry any "name", but
+            // only these two schemes stamp their own scheme name as the type.
+            .AddPolicy(Policies.AuthBackendServiceAccess, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireAssertion(ctx => ctx.User.Identity is { Name: AuthBackendAuthenticationDefaults.ServiceIdentityName, AuthenticationType: AuthBackendAuthenticationDefaults.KeySchemeName or AuthBackendAuthenticationDefaults.GoogleSchemeName }));
 
     /// <summary>The three coarse capabilities for <paramref name="user"/>: seat unioned with permissions.
     /// The one function both the policies and <c>/api/v1/me</c> resolve through.</summary>

@@ -18,7 +18,14 @@ public sealed class EnvelopeResultFilter : IAsyncResultFilter
 {
     public async Task OnResultExecutionAsync(ResultExecutingContext context, ResultExecutionDelegate next)
     {
-        context.Result = Envelope(context.Result, context.HttpContext.TraceIdentifier);
+        // A bare-success action keeps its own success body; an error from it is still enveloped.
+        var bare = context.ActionDescriptor.EndpointMetadata?.OfType<BareSuccessResponseAttribute>().Any() == true
+            && context.Result is ObjectResult { StatusCode: null or < 400 };
+        if (!bare)
+        {
+            context.Result = Envelope(context.Result, context.HttpContext.TraceIdentifier);
+        }
+
         await next();
     }
 

@@ -43,6 +43,14 @@ public sealed class ControllerConventionTests
         {
             var route = controller.GetCustomAttribute<RouteAttribute>(inherit: true)?.Template;
 
+            // The one deliberate exception: a machine surface whose path the sender's contract fixes
+            // (api/integration/auth-backend/…). It is named here, not matched by a pattern, so a second
+            // unversioned route is a visible edit to this test and not a silent pass.
+            if (route == "api/integration/auth-backend")
+            {
+                continue;
+            }
+
             Assert.True(
                 route is not null && route.StartsWith("api/v", StringComparison.OrdinalIgnoreCase),
                 $"{controller.Name} must declare a versioned route (api/v1/...), but had '{route ?? "(none)"}'.");

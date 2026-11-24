@@ -147,4 +147,33 @@ public sealed class FakeAuthenticationEventRepository : AjBoilerplate.Applicatio
         Saved.Add(authenticationEvent);
         return Task.FromResult(true);
     }
+
+    /// <summary>What <see cref="ListAsync"/> returns, and the filter it was last asked with.</summary>
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Listed { get; } = [];
+
+    public AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryFilter? LastFilter { get; private set; }
+
+    public Task<(IReadOnlyList<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Items, int Total)> ListAsync(
+        AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryFilter filter, CancellationToken cancellationToken)
+    {
+        LastFilter = filter;
+        return Task.FromResult<(IReadOnlyList<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent>, int)>(([.. Listed], Listed.Count));
+    }
+
+    public Task<IReadOnlyList<AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryUser>> UsersAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryUser>>([]);
+
+    /// <summary>What <see cref="EndAsync"/> answers, and the calls it received.</summary>
+    public AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite EndResult { get; set; } =
+        AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite.Ended;
+
+    public List<(string SessionId, Guid EventId, string Reason, string? Detail, DateTimeOffset EndedAt)> Ends { get; } = [];
+
+    public Task<AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite> EndAsync(
+        string sessionId, Guid eventId, string reason, string? reasonDetail, DateTimeOffset endedAt, CancellationToken cancellationToken)
+    {
+        Ends.Add((sessionId, eventId, reason, reasonDetail, endedAt));
+        return Task.FromResult(EndResult);
+    }
 }

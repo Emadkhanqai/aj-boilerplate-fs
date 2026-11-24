@@ -54,3 +54,18 @@ public sealed record UserCapabilitiesResponse(
     bool CanEdit,
     bool CanDelete,
     bool CanAdminister);
+
+/// <summary>
+/// The portals the signed-in person may open — <c>GET /api/v1/me/portals</c>. Derived from the caller's own
+/// capabilities and the configured portal list; the request carries nothing, so there is nothing to forge.
+/// </summary>
+/// <param name="PortalKeys">The key of every portal listed in <paramref name="Portals"/>, for a client that
+/// only needs to know locked from unlocked. Same field name USP-Core's response uses.</param>
+/// <param name="Portals">The portals this caller may open.</param>
+public sealed record MePortalsResponse(IReadOnlyList<string> PortalKeys, IReadOnlyList<PortalResponse> Portals);
+
+/// <summary>One portal the caller may open.</summary>
+/// <param name="Key">Stable identifier.</param>
+/// <param name="Name">Display name.</param>
+/// <param name="Url">Where it lives; may be a relative path.</param>
+public sealed record PortalResponse(string Key, string Name, string Url);

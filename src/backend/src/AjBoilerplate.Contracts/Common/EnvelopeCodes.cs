@@ -15,4 +15,11 @@ public static class EnvelopeCodes
     public const string RequestFailed = "REQUEST_FAILED";
     public const string ServiceUnavailable = "SERVICE_UNAVAILABLE";
     public const string TooManyRequests = "TOO_MANY_REQUESTS";
+
+    /// <summary>The Auth service (or another upstream this API calls) refused or failed the call, and the cause
+    /// is configuration or the upstream, not the caller's request or permissions.</summary>
+    public const string UpstreamError = "UPSTREAM_ERROR";
+
+    /// <summary>The e-mail address's domain may not be given a seat.</summary>
+    public const string EmailDomainNotAllowed = "EMAIL_DOMAIN_NOT_ALLOWED";
 }

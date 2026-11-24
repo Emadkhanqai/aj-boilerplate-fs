@@ -55,11 +55,12 @@ public sealed class SignInRecorderTests
         var repository = new FakeAuthenticationEventRepository();
         var recorder = new SignInRecorder(repository, new FixedClock(Now));
 
-        var recorded = await recorder.RecordAsync("oid-1", "s1", Now.AddMinutes(-1), CancellationToken.None);
+        var recorded = await recorder.RecordAsync("oid-1", "Test User", "s1", Now.AddMinutes(-1), CancellationToken.None);
 
         Assert.True(recorded);
         var saved = Assert.Single(repository.Saved);
         Assert.Equal(("oid-1", "s1", Now.AddMinutes(-1), Now), (saved.Subject, saved.SessionId, saved.StartedAt, saved.RecordedAt));
+        Assert.Equal("Test User", saved.DisplayName);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public sealed class SignInRecorderTests
         var repository = new FakeAuthenticationEventRepository { AlreadyExists = true };
 
         Assert.False(await new SignInRecorder(repository, new FixedClock(Now))
-            .RecordAsync("oid-1", "s1", Now, CancellationToken.None));
+            .RecordAsync("oid-1", null, "s1", Now, CancellationToken.None));
         Assert.Empty(repository.Saved);
     }
 
@@ -78,7 +79,7 @@ public sealed class SignInRecorderTests
         var repository = new FakeAuthenticationEventRepository { Failure = new TimeoutException("db down") };
 
         await Assert.ThrowsAsync<TimeoutException>(() => new SignInRecorder(repository, new FixedClock(Now))
-            .RecordAsync("oid-1", "s1", Now, CancellationToken.None));
+            .RecordAsync("oid-1", null, "s1", Now, CancellationToken.None));
     }
 
     [Theory]
@@ -90,7 +91,7 @@ public sealed class SignInRecorderTests
         var repository = new FakeAuthenticationEventRepository();
 
         Assert.False(await new SignInRecorder(repository, new FixedClock(Now))
-            .RecordAsync(subject, sessionId, Now, CancellationToken.None));
+            .RecordAsync(subject, null, sessionId, Now, CancellationToken.None));
         Assert.Empty(repository.Attempted);
     }
 }
@@ -134,6 +135,7 @@ public sealed class SignInRecordingMiddlewareTests
     [InlineData("/api/v1/me", "sess-1", StartedAt, false)]
     [InlineData("/health/live", "sess-1", StartedAt, true)]
     [InlineData("/apiary", "sess-1", StartedAt, true)]
+    [InlineData("/api/integration/auth-backend/session-ended", "sess-1", StartedAt, true)]
     public async Task Anything_short_of_an_authenticated_api_request_with_both_valid_headers_records_nothing(
         string path, string? sessionId, string? startedAt, bool authenticated)
     {
@@ -204,7 +206,8 @@ public sealed class SignInRecordingMiddlewareTests
 
         public Exception? Failure { get; set; }
 
-        public Task<bool> RecordAsync(string subject, string sessionId, DateTimeOffset startedAt, CancellationToken cancellationToken)
+        public Task<bool> RecordAsync(
+            string subject, string? displayName, string sessionId, DateTimeOffset startedAt, CancellationToken cancellationToken)
         {
             Calls.Add((subject, sessionId, startedAt));
             return Failure is null ? Task.FromResult(true) : Task.FromException<bool>(Failure);
