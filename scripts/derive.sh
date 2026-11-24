@@ -361,9 +361,20 @@ env_example_for() {
 #      promoted file takes the root name cleanly. `docker-compose.yml` is the case that matters —
 #      the full-stack compose is dropped, and the stack's own compose becomes the one at the root,
 #      which is exactly what a single-stack repository wants.
+#
+#   4. Two dotfiles are not "collisions" but have their own semantics, and a suffixed copy of either
+#      is a file no tool reads (measured 2026-11-24: the derived backend failed `dotnet format`, 9
+#      files, because the full-stack root .editorconfig applied instead of the backend's):
+#        .editorconfig  The stack's own file declares `root = true`, so in this tree it is the ONLY
+#                       one that applies to that stack. It therefore REPLACES the root file.
+#        .gitignore     Git applies nested ignore files on top of the root one, so the stack's file
+#                       is APPENDED to the root file.
 classify() {
   _f="$1"
   if matches_any "$_f" "$drop_list" || matches_any "$_f" "$COMMON_DROP"; then
+    return 1
+  fi
+  if [ "$_f" = '.editorconfig' ] && git -C "$ROOT" ls-files --error-unmatch "$promoted/.editorconfig" >/dev/null 2>&1; then
     return 1
   fi
   case "$_f" in
@@ -372,6 +383,7 @@ classify() {
   esac
   C_OUT="$C_REL"; C_COLLIDE=0
   if [ "$C_KIND" = 'promoted' ] && [ -e "$ROOT/$C_REL" ] \
+     && [ "$C_REL" != '.editorconfig' ] && [ "$C_REL" != '.gitignore' ] \
      && ! matches_any "$C_REL" "$COMMON_DROP" && ! matches_any "$C_REL" "$drop_list"; then
     C_COLLIDE=1
     C_OUT="$(suffixed_name "$C_REL" "$target")"
@@ -472,6 +484,8 @@ EOF
       mkdir -p "$dest/$(dirname "$out_rel")"
       if [ "$out_rel" = '.env.example' ]; then
         env_example_for "$target" "$ROOT/$f" > "$dest/$out_rel"
+      elif [ "$out_rel" = '.gitignore' ] && [ "$kind" = 'promoted' ]; then
+        { printf '\n# ---- from %s/.gitignore (aj-boilerplate-fs) ----\n' "$promoted"; cat "$ROOT/$f"; } >> "$dest/$out_rel"
       else
         cp -p "$ROOT/$f" "$dest/$out_rel"
         # Links first, text rewrite second: the rewrite would turn a GitHub URL containing
