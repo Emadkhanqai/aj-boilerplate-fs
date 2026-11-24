@@ -24,8 +24,16 @@ To run against a real backend instead:
 npx nx serve web
 ```
 
-Requests go to relative `/api/v1/...` paths, so proxy them to your API (see `nginx.conf` for the
-container equivalent).
+Requests go to relative `/api/v1/...` paths, so proxy them to your API (see `docker/nginx/` for the
+container equivalent). `apps/web/public/env.js` defaults to `AUTH_MODE=dev` (the role picker) for
+`nx serve`; a container defaults to `gateway`.
+
+## Sign-in
+
+Deployed builds hold **no token**: nginx in the web container checks an HttpOnly session cookie
+against the Auth service on every request and injects the API's `Authorization` header itself. The
+container reads `AUTH_MODE` (`gateway` | `dev`), `AUTH_PROVIDER` (`embedded` | `usp`), `API_UPSTREAM`
+and `AUTH_UPSTREAM`. The contract is `docs/auth/gateway-contract.md`; the SPA side is `libs/auth`.
 
 ## Layout
 

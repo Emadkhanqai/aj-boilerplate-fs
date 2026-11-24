@@ -33,7 +33,6 @@ export async function signInAs(page: Page, user: DevSessionUser): Promise<void> 
   const session = {
     user: { userId: user.userId, name: user.name, email: user.email },
     roles: [user.role],
-    accessToken: `dev.${user.userId}`,
   };
   await page.addInitScript(
     ({ key, value }: { key: string; value: string }) => window.localStorage.setItem(key, value),

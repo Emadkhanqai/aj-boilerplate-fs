@@ -2,3 +2,9 @@
 <!-- Single global toast host — mounted here (the true app root) rather than in the shell layout,
      so it is visible on every route, public and authenticated alike. -->
 <p-toast position="bottom-right" />
+
+<!-- Blocking dialogs for "your access changed" and "your access was removed". Mounted at the root,
+     not in the shell, so they cover every route and survive a navigation. Each renders nothing
+     until its watcher says so. -->
+<app-role-change-dialog />
+<app-access-revoked-dialog />

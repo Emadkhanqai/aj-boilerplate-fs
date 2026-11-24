@@ -5,30 +5,39 @@ import type { CanActivateFn, UrlTree } from '@angular/router';
 import { filter, map, take } from 'rxjs';
 import type { Observable } from 'rxjs';
 import { AuthService } from './auth.service';
+import { sanitizeReturnPath } from './sanitize-return-path';
 import type { Capability } from './roles';
 
+export const ACCESS_CHECK_UNAVAILABLE_PATH = '/access-check-unavailable';
+
 /**
- * Capability guard for role-gated routes. If the session lacks the capability, redirects to a
- * visible "access denied" page rather than silently bouncing to the home page — a missing
- * capability is worth surfacing, not hiding. Mirrors the backend policy on the underlying
- * endpoints; the backend remains the real enforcement point.
+ * Capability guard for role-gated routes. Three outcomes, kept distinct on purpose:
  *
- * Capabilities are only authoritative once the profile query has resolved: on a cold page load
- * (bookmark, refresh, pasted link) the session carries no usable roles yet, so
- * `AuthService.capabilities()` is still serving its all-false fallback. Deciding then would deny
- * every capability-gated route to every role, so the guard waits for `capabilitiesLoading()` to
- * clear before it judges. `capabilitiesLoading()` is already false when there is no session at
- * all, so the guard resolves (to a deny) instead of hanging — `authGuard` on the parent route is
- * what redirects an unauthenticated visitor to /login.
+ * - no session -> `/login`;
+ * - the profile could NOT be read (outage, not a verdict) -> `/access-check-unavailable`, because
+ *   telling someone they have no access when the server simply did not answer is a false statement;
+ * - the profile says no -> `/access-denied`, a visible refusal rather than a silent bounce.
+ *
+ * Capabilities are only authoritative once the profile query has resolved: on a cold page load the
+ * session carries no usable roles yet, so deciding then would deny every gated route to every role.
+ * The guard waits for `capabilitiesLoading()` to clear. Mirrors the backend policy on the underlying
+ * endpoints; the backend remains the real enforcement point.
  */
 export function capabilityGuard(capability: Capability): CanActivateFn {
-  return (): boolean | UrlTree | Observable<boolean | UrlTree> => {
+  return (_route, state): boolean | UrlTree | Observable<boolean | UrlTree> => {
     const authService = inject(AuthService);
     const router = inject(Router);
 
-    const decide = (): boolean | UrlTree =>
-      authService.capabilities()[capability] ||
-      router.createUrlTree(['/access-denied'], { queryParams: { capability } });
+    const decide = (): boolean | UrlTree => {
+      const from = sanitizeReturnPath(state.url);
+      if (!authService.isAuthenticated()) {
+        return from === '/' ? router.createUrlTree(['/login']) : router.createUrlTree(['/login'], { queryParams: { from } });
+      }
+      if (authService.capabilitiesUnavailable()) {
+        return router.createUrlTree([ACCESS_CHECK_UNAVAILABLE_PATH], from === '/' ? {} : { queryParams: { from } });
+      }
+      return authService.capabilities()[capability] || router.createUrlTree(['/access-denied'], { queryParams: { capability } });
+    };
 
     if (!authService.capabilitiesLoading()) {
       return decide();

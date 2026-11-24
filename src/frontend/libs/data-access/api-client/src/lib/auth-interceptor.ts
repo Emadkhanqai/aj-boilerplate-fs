@@ -1,63 +1,40 @@
 import { inject } from '@angular/core';
 import type { HttpInterceptorFn } from '@angular/common/http';
-import { catchError, from, switchMap, throwError } from 'rxjs';
-import { AUTH_TOKEN_PROVIDER } from './auth-token';
-import { SESSION_EXPIRED_NOTIFIER, TOKEN_REFRESHER, markSessionExpired } from './session-expiry';
+import { catchError, throwError } from 'rxjs';
+import { AMBIENT_SESSION_ACTIVE, SESSION_EXPIRED_NOTIFIER, markSessionExpired } from './session-expiry';
+import { isAccessRevokedPage } from './access-revoked';
 import { ApiError } from './api-error';
 
 /**
- * Attaches `Authorization: Bearer <token>` to every API request.
+ * Turns a `401` on a live session into "your session ended". It attaches NOTHING to the request:
+ * the browser holds no token, same-origin requests carry the gateway's HttpOnly cookie, and nginx
+ * adds the `Authorization` header on its way to the API (overwriting anything sent from here, so a
+ * header attached in the browser would only be discarded and confuse whoever debugs it).
  *
- * Refresh-on-401: a `401` on a request that CARRIED a bearer token means the session is no longer
- * valid server-side (expired or revoked) — not that the endpoint is simply unauthenticated. When
- * that happens, this attempts one token refresh via `TOKEN_REFRESHER` (bound by `AuthService`;
- * optional, so dev-mode sessions and any session without a refresh token skip straight to the
- * fallback) and retries the request exactly once with the new token. If there is no refresher,
- * the refresh fails/returns `null`, or the retried request still 401s, `SESSION_EXPIRED_NOTIFIER`
- * fires (also bound by `AuthService`, to clear the session and drive the session-expired UX) and
- * the original error propagates to the caller.
+ * Rules, in order:
+ *  - a 401/403 while the access-revoked dialog is open is swallowed (marked, no redirect): the
+ *    dialog is already the answer, and a redirect would tear it down;
+ *  - a 401 while an ambient session is active and we are off the sign-in page means the session
+ *    ended: notify, so the shell redirects to `/login`;
+ *  - any other 401 (an anonymous visitor on the sign-in page) is just an error.
  *
- * If your API has anonymous surfaces that must NEVER receive the bearer token, skip them by URL
- * prefix at the top of this function rather than relying on each caller to opt out.
+ * Only a 401 may become a login redirect. A 403 or 503 never does: those are verdicts or outages,
+ * not an ended session. Must be listed BEFORE `envelopeInterceptor` so it sees the unwrapped `ApiError`.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const getToken = inject(AUTH_TOKEN_PROVIDER);
-  const refreshToken = inject(TOKEN_REFRESHER, { optional: true });
+  const ambientSessionActive = inject(AMBIENT_SESSION_ACTIVE, { optional: true });
   const notifySessionExpired = inject(SESSION_EXPIRED_NOTIFIER, { optional: true });
 
-  const token = getToken();
-  const authedReq = token === null ? req : req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
-
-  return next(authedReq).pipe(
+  return next(req).pipe(
     catchError((err: unknown) => {
       const status = err instanceof ApiError ? err.status : undefined;
-      // A 401 only signals an invalid session when the request actually carried a bearer token —
-      // an anonymous request 401ing (no token to begin with) is a different failure.
-      if (status !== 401 || token === null) {
-        return throwError(() => err);
-      }
-      if (refreshToken === null) {
+      if ((status === 401 || status === 403) && isAccessRevokedPage()) {
+        markSessionExpired(err);
+      } else if (status === 401 && ambientSessionActive?.() === true) {
         markSessionExpired(err);
         notifySessionExpired?.();
-        return throwError(() => err);
       }
-      return from(refreshToken()).pipe(
-        switchMap((newToken) => {
-          if (newToken === null) {
-            markSessionExpired(err);
-            notifySessionExpired?.();
-            return throwError(() => err);
-          }
-          const retriedReq = req.clone({ setHeaders: { Authorization: `Bearer ${newToken}` } });
-          return next(retriedReq).pipe(
-            catchError((retryErr: unknown) => {
-              markSessionExpired(retryErr);
-              notifySessionExpired?.();
-              return throwError(() => retryErr);
-            }),
-          );
-        }),
-      );
+      return throwError(() => err);
     }),
   );
 };

@@ -81,3 +81,13 @@ describe('sanitizeReturnPath', () => {
     });
   });
 });
+
+describe('sanitizeReturnPath — the gateway round trip', () => {
+  it('strips identity-provider protocol parameters but keeps application ones', () => {
+    expect(sanitizeReturnPath('/items?state=abc&code=xyz&tab=1')).toBe('/items?tab=1');
+  });
+
+  it('does not let a login redirect smuggle an off-origin target through `from`', () => {
+    expect(sanitizeReturnPath('https://evil.example/items')).toBe('/');
+  });
+});

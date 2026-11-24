@@ -1,0 +1,58 @@
+# nginx profile: AUTH_PROVIDER=usp — a plain static web container.
+#
+# The project is fronted by USP's SHARED gateway nginx, which does all the gating, the
+# `auth_request`, the Authorization injection, the `/auth/` proxy and the security headers and CSP
+# nonce for this host (docs/auth/gateway-contract.md, section "AUTH_PROVIDER=usp"). So this
+# container deliberately does none of it:
+#
+#   * NO gating: there is no `auth_request` here. Anything that reaches this container has already
+#     been through the gateway.
+#   * `/api/` is NOT proxied: USP's gateway routes `/api/` straight to the API service. A proxy here
+#     would be a second, ungated path to it.
+#   * NO CSP and NO nonce substitution: the gateway sets the CSP and replaces `__CSP_NONCE__` in the
+#     document with ITS request id. Replacing it here first, with this container's own request id,
+#     would make the nonce in the page differ from the one in the gateway's header and block every
+#     PrimeNG style.
+#
+# Never expose this profile directly to a network: it is only safe behind the shared gateway.
+
+server_tokens off;
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    absolute_redirect off;
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Rewritten per container start (docker/40-env.sh) and requested without a cache-buster.
+    location = /env.js {
+        add_header Cache-Control "no-cache";
+    }
+
+    # The document is never cached: the gateway stamps a per-request nonce into it.
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # These never legitimately reach this container: the gateway routes them elsewhere. If one does
+    # (a misconfigured gateway host block), an explicit 404 is a clearer failure than the SPA
+    # fallback answering `200 text/html` to a JSON call.
+    location ^~ /api/ {
+        return 404;
+    }
+
+    location ^~ /auth/ {
+        return 404;
+    }
+
+    location / {
+        try_files $uri /index.html;
+    }
+}

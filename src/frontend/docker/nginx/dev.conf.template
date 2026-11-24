@@ -1,0 +1,39 @@
+# nginx profile: AUTH_MODE=dev — local container run with the role picker.
+#
+# Static SPA plus an UNGATED `/api/` proxy to ${API_UPSTREAM}: the dev role picker has no server
+# session, so there is nothing to gate against. Use only on a developer machine or in the offline
+# demo; never deploy it. Every deployed environment runs `embedded` or `usp`.
+
+server_tokens off;
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Every API service in this codebase calls relative `/api/v1/...` paths, same-origin by design,
+    # so `/api` is proxied here rather than the browser calling the API host cross-origin.
+    location /api/ {
+        proxy_pass ${API_UPSTREAM};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Rewritten per container start (docker/40-env.sh) and requested without a cache-buster.
+    location = /env.js {
+        add_header Cache-Control "no-cache";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
