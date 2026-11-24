@@ -1,8 +1,15 @@
 # ADR-0002: Two cloud providers behind a single `CLOUD_PROVIDER` switch
 
-**Status:** Accepted
+**Status:** Accepted. **The identity (authentication) part is superseded by [ADR-0012](0012-gateway-session-auth.md)**; the rest stands.
 **Date:** 2026-08-02
 **Deciders:** Boilerplate maintainers
+
+> **Superseded in part, 2026-11-24.** This record is kept as written because it describes what was
+> decided and why. Since 1.0, identity does **not** branch on `CLOUD_PROVIDER`: users sign in
+> against Microsoft Entra ID through the Auth service on both clouds, and the API validates only
+> Keycloak JWTs. `CLOUD_PROVIDER` now selects the secrets provider and the `infra/` tree. Read every
+> mention of "Google Cloud Identity", "Microsoft Entra ID as the issuer" and "the authentication
+> branch" below in that light. Authorization (Keycloak), the cache and the database are unchanged.
 
 ---
 

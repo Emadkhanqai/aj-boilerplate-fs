@@ -5,6 +5,12 @@
 **Deciders:** Boilerplate maintainers
 **Supersedes:** —
 
+> **Note, 2026-11-24.** The API now records one row per sign-in in an `AuthenticationEvents` table
+> (`SignInRecordingMiddleware`, see [ADR-0012](0012-gateway-session-auth.md)). That does not change
+> this decision. It is a **sign-in log**: who signed in and when the gateway session began. It records
+> no failed sign-ins, no session endings, no reads, and nothing about any business row, so there is
+> still no audit trail. The six tables listed under Context are now seven.
+
 ---
 
 ## Context

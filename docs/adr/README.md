@@ -19,23 +19,27 @@ true even after the decision is reversed, because it describes a moment.
 | [0009](0009-idempotency-keys-for-unsafe-requests.md) | `Idempotency-Key` is opt-in, POST-only, and replays a buffered response from a unique-indexed table | Accepted |
 | [0010](0010-partial-rtl-without-an-i18n-library.md) | Direction switching without an i18n library — partial RTL, deliberately | Accepted |
 | [0011](0011-scripted-one-way-derivation-for-the-three-repositories.md) | Derivation of the single-stack repositories is a committed one-way script | Accepted |
+| [0012](0012-gateway-session-auth.md) | Sign-in is a gateway session, not a browser token (supersedes the identity part of 0002) | Accepted |
 
-These eleven record the decisions taken when this boilerplate was built. Keep them as history and
-start your own series at the next free number, or delete them and start at `0001` — but pick one
-and be consistent.
+These twelve record the decisions taken when this boilerplate was built. They are the canonical
+series of `aj-boilerplate-fs`, and **the next free number is `0013`**. If you cloned this to start a
+project, either keep them as history and continue at `0013`, or delete them and start your own
+series at `0001` — but pick one and be consistent.
 
 **Numbers are never reused or renumbered.** Renumbering an ADR after the fact breaks every
 cross-reference that already points at it, and a gap in a sequence is cheaper than a number that
 means two different things in two repositories. If a number is claimed and the ADR is then
 abandoned, leave the gap and say so here.
 
-Three pairs are worth reading together:
+Four pairs are worth reading together:
 
 - **`0003` and `0007`** — `0007` bounds `0003` rather than superseding it. It is the one place the
   PrimeNG rule bends, and it says exactly how far.
 - **`0006` and `0011`** — `0006` decided to publish three repositories and named the drift risk;
   `0011` is the mechanism, written after the drift it predicted had already happened.
 - **`0001` and `0008`** — `0008` is what the layering in `0001` deliberately does *not* buy you.
+- **`0002` and `0012`** — `0012` supersedes the identity half of `0002` and leaves the secrets half
+  standing. `0002` carries a note at its top saying so; its body is unchanged.
 
 ## Writing one
 
