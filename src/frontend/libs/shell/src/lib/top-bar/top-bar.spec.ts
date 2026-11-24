@@ -8,18 +8,18 @@ import { AuthService } from '@aj-boilerplate/auth';
 import { DocumentDirectionService, LanguageService, provideDocumentDirection } from '@aj-boilerplate/shared/util';
 import { TopBarComponent } from './top-bar';
 
-function authStub(): Partial<AuthService> {
-  return { roles: () => ['admin'] } as unknown as Partial<AuthService>;
+function authStub(roles: string[] = ['admin']): Partial<AuthService> {
+  return { roles: () => roles } as unknown as Partial<AuthService>;
 }
 
-async function renderTopBar() {
+async function renderTopBar(roles?: string[]) {
   return render(TopBarComponent, {
     inputs: { title: 'Items' },
     providers: [
       provideZonelessChangeDetection(),
       providePrimeNG({}),
       provideDocumentDirection(),
-      { provide: AuthService, useValue: authStub() },
+      { provide: AuthService, useValue: authStub(roles) },
     ],
   });
 }
@@ -61,5 +61,19 @@ describe('TopBarComponent — language toggle', () => {
 
     const toggle = screen.getByRole('button', { name: 'Switch to Arabic' });
     expect(toggle.textContent).toContain('العربية');
+  });
+});
+
+describe('TopBarComponent — role badge', () => {
+  it.each([
+    [['editor', 'admin'], 'admin'],
+    [['admin', 'editor'], 'admin'],
+    [['viewer', 'editor'], 'editor'],
+    [['viewer'], 'viewer'],
+  ])('shows the highest seat for roles %j', async (roles, expected) => {
+    await renderTopBar(roles);
+
+    const badge = document.querySelector('.pill-role');
+    expect(badge?.textContent?.trim()).toBe(expected);
   });
 });

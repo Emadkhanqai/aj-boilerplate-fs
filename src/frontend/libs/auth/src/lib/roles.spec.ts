@@ -6,6 +6,7 @@ import {
   capabilitiesForPermissions,
   capabilitiesForProfile,
   capabilitiesForRoles,
+  highestRole,
   isRole,
   toRole,
   toRoles,
@@ -136,5 +137,18 @@ describe('capabilitiesForProfile', () => {
 
   it('grants nothing to a profile with no roles, no permissions and no flags', () => {
     expect(capabilitiesForProfile({ roles: [] })).toEqual(NO_CAPABILITIES);
+  });
+});
+
+describe('highestRole', () => {
+  it('picks the highest seat whatever order the roles arrive in', () => {
+    expect(highestRole(['editor', 'admin'])).toBe('admin');
+    expect(highestRole(['admin', 'editor', 'viewer'])).toBe('admin');
+    expect(highestRole(['viewer', 'editor'])).toBe('editor');
+    expect(highestRole(['viewer'])).toBe('viewer');
+  });
+
+  it('is undefined when the user holds no role', () => {
+    expect(highestRole([])).toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, computed, inject, input, output } from '@angular/core';
 import { ButtonModule } from 'primeng/button';
-import { AuthService } from '@aj-boilerplate/auth';
+import { AuthService, highestRole } from '@aj-boilerplate/auth';
 import { LanguageService } from '@aj-boilerplate/shared/util';
 
 /**
@@ -69,7 +69,7 @@ export class TopBarComponent {
   private readonly auth = inject(AuthService);
   private readonly language = inject(LanguageService);
 
-  readonly primaryRole = computed(() => this.auth.roles()[0]);
+  readonly primaryRole = computed(() => highestRole(this.auth.roles()));
 
   /** The language the toggle switches TO, labelled in its own script. */
   readonly otherLanguageLabel = computed(() => (this.language.current() === 'en' ? 'العربية' : 'English'));

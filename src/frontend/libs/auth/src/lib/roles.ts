@@ -41,6 +41,15 @@ export function toRole(value: string): Role | null {
   return (ROLES as readonly string[]).includes(normalised) ? (normalised as Role) : null;
 }
 
+/**
+ * The user's highest seat, for the one label a screen shows (top bar, sidebar, home page).
+ * `ROLES` is ordered highest first, so a user holding `editor` and `admin` is an `admin` whatever
+ * order the token listed them in. `undefined` when none of the roles is one we know.
+ */
+export function highestRole(roles: readonly Role[]): Role | undefined {
+  return ROLES.find((role) => roles.includes(role));
+}
+
 /** Normalises a list of wire role names, dropping any this application does not know. */
 export function toRoles(values: readonly string[]): Role[] {
   return values.map(toRole).filter((role): role is Role => role !== null);
