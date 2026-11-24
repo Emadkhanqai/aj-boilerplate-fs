@@ -30,7 +30,7 @@ authenticated business API — treat it as such in every review.
   input.
 - **Insecure Design** → threat-model external surfaces, integrations, and exports *during*
   design, not after.
-- **Authentication Failures** → SSO only, no local credentials; external tokens are
+- **Authentication Failures** → SSO only, no local credentials, no token in the browser; external tokens are
   single-purpose, time-bound, and revocable.
 - **Software/Data Integrity Failures** → signed tokens; append-only audit; reviewed
   migrations; no unpinned CI actions.
@@ -44,7 +44,7 @@ authenticated business API — treat it as such in every review.
 | # | Risk | Control in this codebase |
 |---|---|---|
 | 1 | BOLA | Ownership check after load, in the handler |
-| 2 | Broken authentication | OIDC SSO; no local credentials; short-lived tokens |
+| 2 | Broken authentication | Entra ID SSO via the Auth service; no local credentials; HttpOnly session cookie, no browser token; short-lived JWTs; 12 h absolute session |
 | 3 | Broken object property level auth | Per-permission DTO projection + a leak test |
 | 4 | Unrestricted resource consumption | Rate limiting, body-size limits, mandatory pagination, request timeouts |
 | 5 | Broken function level auth | An explicit policy on every endpoint; deny by default |

@@ -198,7 +198,10 @@ changed **structurally** rather than incrementally:
 - The response envelope or error contract changed — see
   [ADR-0005](adr/0005-apiresponse-envelope-and-status-code-contract.md) for the kind of decision
   that would do this.
-- The authentication or authorization model changed.
+- The authentication or authorization model changed. **This has happened once: 1.0.0 replaced
+  browser-side OIDC with gateway session authentication.** If you cloned 0.1.x and kept its
+  sign-in, go straight to
+  [Upgrading from 0.1.x to 1.0](#upgrading-from-01x-to-10) below instead of attempting a merge.
 - The frontend workspace layout changed — apps and libraries reshuffled, Nx boundaries redrawn.
 
 In those cases a merge is not conservative, it is a slow-motion rewrite with conflict markers. A
@@ -357,6 +360,33 @@ the entry that gets skipped when a release is rushed.
 
 The general principle behind all four: **the maintainer pays once, every consumer pays every
 time.** Any cost you can move upstream, move upstream.
+
+---
+
+
+## Upgrading from 0.1.x to 1.0
+
+1.0.0 changed the sign-in model and several configuration keys, so it is a major upgrade. The
+step-by-step list is in the [1.0.0 changelog entry](../CHANGELOG.md#100--2026-11-24) under
+"Upgrade steps from 0.1.x". The short form, in the order that avoids surprises:
+
+1. **Read [ADR-0012](adr/0012-gateway-session-auth.md) and [docs/auth/](auth/README.md).** The
+   browser no longer holds a token; an Auth service and an nginx gateway do the sign-in.
+2. **Choose `AUTH_PROVIDER`.** `embedded` (you deploy the Auth service) outside the Al Jazeera USP
+   platform, `usp` inside it.
+3. **Take these wholesale** (you almost certainly did not change them): `src/backend/src/AjBoilerplate.Auth/`,
+   `src/backend/tests/AjBoilerplate.Auth.Tests/`, `src/frontend/docker/`, `infra/keycloak/`,
+   `docs/auth/`, and the new root `docker-compose.yml`.
+4. **Merge by hand** (you probably did change them): `src/backend/src/AjBoilerplate.Api/Identity/`,
+   `Program.cs`, `libs/auth`, `libs/data-access/api-client`, `app.config.ts`, `.env.example`.
+5. **Delete** `src/frontend/nginx.conf`, every `OIDC_*` and `Authentication__*` setting, and
+   `Keycloak__Realm` / `Keycloak__ClientSecret`.
+6. **Apply the new migration** to your app database and create the Auth database.
+7. **Re-run the gate**, then sign in as a user with a role, one without, and one whose role you
+   remove while they are signed in.
+
+Nothing in `infra/` deploys the Auth service or the web container, so if you use `embedded` that
+work is yours; see [what is not deployed](auth/setup.md#what-is-not-deployed).
 
 ---
 

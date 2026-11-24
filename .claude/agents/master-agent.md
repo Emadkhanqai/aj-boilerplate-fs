@@ -37,10 +37,12 @@ push.**
 
 ## Identity model to preserve
 
-The cloud provider's identity service **authenticates**; **Keycloak authorizes** — under both
-`CLOUD_PROVIDER=gcp` and `azure` (see [`../standards/cloud.md`](../standards/cloud.md)). Any
-external surface uses scoped, time-bound, revocable tokens minted by Keycloak, never the
-corporate identity provider.
+**Microsoft Entra ID authenticates** (through the Auth service; the browser holds no token) and
+**Keycloak authorizes**, identically under `CLOUD_PROVIDER=gcp` and `azure` and inside USP
+(`AUTH_PROVIDER=usp`). The API only validates Keycloak JWTs. See
+[`../../docs/auth/README.md`](../../docs/auth/README.md) and
+[`../standards/cloud.md`](../standards/cloud.md). Any external surface uses scoped, time-bound,
+revocable tokens minted by Keycloak, never the corporate identity provider.
 
 ## Routing
 

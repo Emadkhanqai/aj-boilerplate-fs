@@ -33,7 +33,7 @@ falls back to a local stub is how a production deployment ends up reading secret
 | Cache | **Memorystore for Redis** | **Azure Cache for Redis** |
 | Secrets | **Secret Manager** | **Key Vault** |
 | Workload credentials | **Workload Identity** (no key files) | **Managed Identity** (no client secrets) |
-| Authentication (authN) | **Google Cloud Identity** (OIDC) | **Microsoft Entra ID** (OIDC) |
+| Authentication (authN) | **Microsoft Entra ID**, via the Auth service (same on both clouds) | **Microsoft Entra ID**, via the Auth service (same on both clouds) |
 | **Authorization (authZ)** | **Keycloak** | **Keycloak** |
 | Object storage | Cloud Storage | Blob Storage |
 | Messaging | Pub/Sub | Service Bus |
@@ -42,8 +42,9 @@ falls back to a local stub is how a production deployment ends up reading secret
 
 ### What actually needs a code branch
 
-Only **two** things: the secrets provider and the authentication setup. Everything else is
-either protocol-identical or lives entirely in `infra/`.
+Only **one** thing: the secrets provider. Everything else is either protocol-identical or lives
+entirely in `infra/`. (Authentication used to be a second branch. It is not any more: see
+[ADR-0012](../../docs/adr/0012-gateway-session-auth.md).)
 
 - **Redis is protocol-identical** — `IDistributedCache` with a Redis connection string works
   on both. The difference is a connection string and an `infra/` resource, not code.
@@ -51,11 +52,13 @@ either protocol-identical or lives entirely in `infra/`.
   provider and every migration do not (see [`mssql.md`](mssql.md)).
 - **Secrets** sit behind `ISecretsProvider`, with a `GcpSecretManagerSecretsProvider` and an
   `AzureKeyVaultSecretsProvider`. Application code never references either type directly.
-- **Authentication** differs only in the OIDC authority/audience configured for JwtBearer.
+- **Authentication does not branch on the cloud.** The Auth service signs users in against Entra ID
+  and the API validates Keycloak JWTs, whichever cloud it runs on. The Auth service reads
+  environment variables, not the secret store, so the platform injects its secrets.
 
 ### Keycloak is provider-independent
 
-**Keycloak is the authorization layer under both providers.** The cloud identity service
+**Keycloak is the authorization layer under both providers.** Entra ID (through the Auth service)
 authenticates the human; Keycloak owns roles, scopes, and permissions, and mints any scoped,
 time-bound, revocable token the application issues. This is deliberate: changing cloud must
 never change the authorization model, and the permission tests must not need rewriting.

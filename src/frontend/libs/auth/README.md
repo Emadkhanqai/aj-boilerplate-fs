@@ -20,7 +20,7 @@ parts share (nginx, Auth service, API, this app) is `docs/auth/gateway-contract.
 | `gateway-signed-out-marker.ts` | "This browser signed out", so the next sign-in sends `prompt=login`. |
 | `gateway-auto-sign-in.ts` | The one-per-five-minutes brake that stops `/login` auto-starting a redirect loop. |
 | `login-hint.ts` | Validates the optional email passed to the identity provider as `login_hint`. |
-| `role-change.ts` | Classifies a change in capabilities as reduction / increase / unchanged. |
+| `role-change.ts` | Classifies a change in capabilities as reduction / increase / unchanged. The watcher that polls `/auth/roles-version` lives in `libs/shell/src/lib/role-change/`. |
 | `sanitize-return-path.ts` | Open-redirect guard for the `?from=` post-login target. |
 
 ## Runtime configuration
@@ -44,8 +44,14 @@ parts share (nginx, Auth service, API, this app) is `docs/auth/gateway-contract.
 
 `permissions` is optional. The UI gates on the union of the server's `capabilities`, what the roles
 grant and what the permissions grant (`capabilitiesForProfile`), because the API admits a caller by
-a seat **or** a permission. `UserProfile` is hand-written because `/me` is not in the generated
-types yet; once it is, replace it with the generated type.
+a seat **or** a permission. `UserProfile` is hand-written, because the generated `UserProfileResponse`
+makes every field optional. `user-profile.contract.spec.ts` stops it drifting: the committed
+`docs/api/openapi.json` must carry every field `UserProfile` names.
+
+A signed-in user with no role still gets a 200 with every capability false; that is how the SPA
+tells "no role" from "the endpoint is broken". When the call fails for any other reason, the
+`capabilityGuard` sends the user to an "access check unavailable" page rather than "access denied",
+because an outage is not a verdict.
 
 ## The rule that matters
 

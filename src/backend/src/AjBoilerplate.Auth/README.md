@@ -1,7 +1,11 @@
 # AjBoilerplate.Auth
 
+> New here? Read [`docs/auth/README.md`](../../../../docs/auth/README.md) first. This page is the
+> service's own reference.
+
 The Auth service: a separate ASP.NET Core minimal-API host that signs users in and answers nginx's
-`auth_request`. It is independent of the layered API: it references none of `Api`, `Application`,
+`auth_request`. Projects that run `AUTH_PROVIDER=usp` (inside the Al Jazeera USP platform) do **not**
+deploy it: USP's shared auth-backend does this job. It is independent of the layered API: it references none of `Api`, `Application`,
 `Domain`, `Infrastructure` or `Contracts`, and none of them reference it (the architecture tests enforce
 both directions). The wire contract it implements is [`docs/auth/gateway-contract.md`](../../../../docs/auth/gateway-contract.md).
 
@@ -25,10 +29,32 @@ the cookie; the JWT and refresh token are encrypted with AES-256-GCM under `Auth
 | `POST /internal/admin/users/{subject}/refresh` | trusted callers, header `X-Admin-Api-Key`; 404 while `Auth:Admin:ApiKey` is empty |
 | `GET /healthz`, `GET /readyz` | platform probes (liveness touches nothing; readiness pings Redis and SQL) |
 
+`/auth/validate` answers 200 with `X-Auth-Jwt` (and the session headers), 401, 403 with
+`X-Usp-Access: revoked`, or 503 with `X-Usp-Failure: auth`. The exact meanings are in the
+[contract](../../../../docs/auth/gateway-contract.md).
+
+## Run and test
+
+```bash
+docker compose up --build                       # from the repo root: the whole stack, Auth service included
+dotnet test src/backend/tests/AjBoilerplate.Auth.Tests       # no Docker needed (fakes)
+dotnet test src/backend/tests/AjBoilerplate.ArchitectureTests # includes the independence test
+dotnet run --project src/backend/src/AjBoilerplate.Auth      # http://localhost:5090, needs SQL, Redis and the secrets below
+```
+
+Folders: `Configuration/` (options and start-up validation), `Endpoints/`, `Sessions/` (sign-in,
+validation, refresh, force-refresh), `Identity/` (Entra and Keycloak clients, JWT claim reading),
+`Security/` (token encryption, session ids, roles version), `Redis/`, `Sql/` (EF Core, migrations,
+sweeper), `Abstractions/`.
+
 ## Configuration
 
-Names only. Secrets come from the secrets provider and are never written into a file. The service refuses
-to start when a required value is missing or invalid.
+Names only; the full table with defaults and "required" is
+[`docs/auth/setup.md`](../../../../docs/auth/setup.md#5-configuration-reference). **This service has no
+secret-store loader**: it reads `appsettings.json` and environment variables. In a deployed
+environment your platform injects the secrets (Secret Manager, Key Vault) as environment variables.
+A secret is never written into a file. The service refuses to start when a required value is missing
+or invalid.
 
 | Key | Notes |
 |---|---|

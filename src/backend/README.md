@@ -8,16 +8,36 @@ src/
   AjBoilerplate.Application/     use cases, ports, validation — depends on Domain
   AjBoilerplate.Contracts/       wire DTOs + ApiResponse<T> — depends on nothing
   AjBoilerplate.Infrastructure/  EF Core, cache, transports, cloud secrets
-  AjBoilerplate.Api/             controllers, middleware, auth, DI, observability
+  AjBoilerplate.Api/             controllers, middleware, JWT validation (Identity/), DI, observability
+  AjBoilerplate.Auth/            SEPARATE host: Entra sign-in, sessions, /auth/validate (see below)
 tests/
   AjBoilerplate.UnitTests/
   AjBoilerplate.IntegrationTests/
-  AjBoilerplate.ArchitectureTests/   enforces the dependency rules above
+  AjBoilerplate.Auth.Tests/          the Auth service (fakes; no Docker)
+  AjBoilerplate.ArchitectureTests/   enforces the dependency rules above and the Auth service's independence
 ```
 
 The dependency direction is enforced by `DependencyRuleTests`, not by convention. Note in
 particular that **the Api does not reference the Domain**: it works through Application models and
 Contracts DTOs, which is what keeps entities out of request and response bodies.
+
+## Authentication in one paragraph
+
+The API never signs anyone in. It validates a **Keycloak JWT** that a gateway (nginx in the web
+container, or USP's shared gateway) puts in `Authorization: Bearer`, checks `azp` equals
+`Keycloak:ClientId`, and maps the roles in it to policies (a seat **or** a permission).
+`GET /api/v1/me` returns the caller's roles and capabilities. Sign-in itself, with Microsoft Entra
+ID, is `AjBoilerplate.Auth`: a second host in this solution that references none of the layered
+projects. Read [`docs/auth/`](../../docs/auth/README.md); the Auth service has its own
+[README](src/AjBoilerplate.Auth/README.md).
+
+**Running this repo's backend on its own** (`aj-boilerplate-be`): the API and the Auth service run
+from here, but **the gateway nginx lives in the frontend**
+(`src/frontend/docker/nginx/` in the full-stack repository, the root of `aj-boilerplate-fe`). With
+only the backend you either run the frontend repository's container in front of it, or call the API
+directly with a JWT you obtained from your Keycloak (useful for tests). This directory's own
+`docker-compose.yml` starts only `db`, `redis`, `api` and `migrate`; it has no Keycloak, no Auth
+service and no gateway, so the API there answers 401 to everything until you set `Keycloak__*`.
 
 ## Run it
 
@@ -28,6 +48,10 @@ docker compose up -d db redis
 docker compose --profile tools run --rm migrate     # apply migrations
 dotnet run --project src/AjBoilerplate.Api          # http://localhost:5080, Swagger at /swagger
 ```
+
+Protected endpoints answer 401 until you point the API at a Keycloak
+(`Keycloak__ValidIssuer`, `Keycloak__JwksUri`, `Keycloak__ClientId`). For the whole sign-in flow
+with no setup, use the root `docker compose up --build` in the full-stack repository.
 
 ## Toolchain
 
@@ -226,17 +250,18 @@ it, and register it in `AddStorage`. Nothing that stores a file changes.
 
 ## Cloud provider
 
-`CLOUD_PROVIDER` (bound as `Cloud:Provider`) accepts `gcp` (default) or `azure`. It selects two
-things and nothing else:
+`CLOUD_PROVIDER` (bound as `Cloud:Provider`) accepts `gcp` (default) or `azure`. In the application it
+selects one thing, and it also decides which `infra/` tree deploys:
 
 | Concern | `gcp` | `azure` |
 |---|---|---|
 | Secrets | Secret Manager | Key Vault + Managed Identity |
-| Authentication issuer | Google Cloud Identity | Microsoft Entra ID |
 
-Authorization is Keycloak on both and never branches. Neither does the cache: Memorystore and Azure
-Cache for Redis speak the same protocol, so one connection string serves both. An unrecognised value
-fails at startup rather than silently defaulting.
+Identity does not branch: users sign in against Entra ID through the Auth service on either cloud,
+and the API validates Keycloak JWTs only (see [ADR-0012](../../docs/adr/0012-gateway-session-auth.md)).
+Neither does the cache: Memorystore and Azure Cache for Redis speak the same protocol, so one
+connection string serves both. An unrecognised value fails at startup rather than silently
+defaulting.
 
 ## The sample slice
 

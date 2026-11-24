@@ -24,7 +24,7 @@ domain model, and both rules are enforced by tests rather than by good intention
   - [`AjBoilerplate.Contracts`](#ajboilerplatecontracts)
   - [`AjBoilerplate.Infrastructure`](#ajboilerplateinfrastructure)
   - [`AjBoilerplate.Api`](#ajboilerplateapi)
-  - [The three test projects](#the-three-test-projects)
+  - [The four test projects](#the-four-test-projects)
 - [Why these boundaries exist](#why-these-boundaries-exist)
 - [Cross-cutting machinery](#cross-cutting-machinery)
   - [The request pipeline](#the-request-pipeline)
@@ -53,8 +53,10 @@ domain model, and both rules are enforced by tests rather than by good intention
 
 ## The backend
 
-Five source projects and three test projects, all listed in
-`src/backend/AjBoilerplate.slnx`:
+Six source projects and four test projects, all listed in
+`src/backend/AjBoilerplate.slnx`. Five of the six form the layered API. The sixth,
+`AjBoilerplate.Auth`, is a **separate host** (sign-in and sessions) that shares nothing with them;
+see [Where authentication ends and authorization begins](#where-authentication-ends-and-authorization-begins).
 
 ```
 src/backend/
@@ -63,10 +65,12 @@ src/backend/
 │   ├── AjBoilerplate.Application/     use cases, ports, validation
 │   ├── AjBoilerplate.Contracts/       wire DTOs and the response envelope
 │   ├── AjBoilerplate.Infrastructure/  EF Core, cache, transports, cloud secrets
-│   └── AjBoilerplate.Api/             controllers, middleware, auth, composition root
+│   ├── AjBoilerplate.Api/             controllers, middleware, JWT validation, composition root
+│   └── AjBoilerplate.Auth/            separate host: Entra sign-in, sessions, /auth/validate
 └── tests/
     ├── AjBoilerplate.UnitTests/
     ├── AjBoilerplate.IntegrationTests/
+    ├── AjBoilerplate.Auth.Tests/
     └── AjBoilerplate.ArchitectureTests/
 ```
 
@@ -420,7 +424,9 @@ cross-cutting middleware.
 - Cross-cutting middleware and filters under `Infrastructure/`: the exception handlers, the
   envelope result filter, the status-code pages, security headers, rate limiting, CORS,
   forwarded headers
-- Authentication and policy wiring under `Identity/`
+- Authentication and policy wiring under `Identity/` (JWT validation, seats, permissions)
+- `Infrastructure/SignInRecordingMiddleware.cs`, which records one `AuthenticationEvents` row per
+  gateway session
 - Configuration sources under `Configuration/`, observability under `Observability/`, and the
   hosted service that drives the outbox under `Messaging/`
 
@@ -471,17 +477,18 @@ breaks the build at the architecture test rather than at review, which is exactl
 
 ---
 
-### The three test projects
+### The four test projects
 
-| Project | Tests | What it proves | Needs |
-|---|---|---|---|
-| `AjBoilerplate.UnitTests` | 185 | Domain invariants, use-case branches, validators, mappers, the claims and role tables, the log sanitizer, the id codec | nothing |
-| `AjBoilerplate.IntegrationTests` | 51 | The real request path end to end against a real SQL Server | Docker |
-| `AjBoilerplate.ArchitectureTests` | 9 | The dependency rule and the controller conventions | nothing |
+| Project | What it proves | Needs |
+|---|---|---|
+| `AjBoilerplate.UnitTests` | Domain invariants, use-case branches, validators, mappers, the claims and role tables, the log sanitizer, the id codec | nothing |
+| `AjBoilerplate.IntegrationTests` | The real request path end to end against a real SQL Server, acting as a role through a test authentication handler | Docker |
+| `AjBoilerplate.Auth.Tests` | The Auth service: sessions, refresh, lifetimes, the revoked marker, endpoints, configuration refusals. Uses fakes, not containers. | nothing |
+| `AjBoilerplate.ArchitectureTests` | The dependency rule, the controller conventions, and that the Auth service is independent of the layered API in both directions | nothing |
 
-245 backend tests in total, alongside 178 on the frontend (`npx nx run-many -t test --all`). Treat
-those figures as a snapshot, not a target — `dotnet test src/backend/AjBoilerplate.slnx` prints the
-current ones.
+`dotnet test src/backend/AjBoilerplate.slnx` prints the current counts, and
+`npx nx run-many -t test --all` the frontend's. Test counts are deliberately not written here: they
+change with every pull request.
 
 The integration suite is worth understanding before you write your first test.
 `Support/SqlServerFixture.cs` starts **one** throwaway SQL Server container
@@ -608,10 +615,12 @@ flowchart TD
   SCP --> SW["Swagger UI - Development only"]
   SW --> HTTPS["UseHttpsRedirection"]
   HTTPS --> CORS["UseCors"]
-  CORS --> RL["UseRateLimiter"]
-  RL --> AUTHN["UseAuthentication"]
-  AUTHN --> AUTHZ["UseAuthorization"]
-  AUTHZ --> MC["MapControllers"]
+  CORS --> AUTHN["UseAuthentication"]
+  AUTHN --> RL["UseRateLimiter"]
+  RL --> AUTHZ["UseAuthorization"]
+  AUTHZ --> SIR["SignInRecordingMiddleware"]
+  SIR --> IDEM["IdempotencyMiddleware"]
+  IDEM --> MC["MapControllers"]
   MC --> EF["EnvelopeResultFilter"]
   EF --> RES["Response"]
 ```
@@ -628,9 +637,13 @@ flowchart TD
   `Observability/RequestLogSanitizer.cs`.
 - **Exception handling before anything that can throw**, with status-code pages immediately after,
   so a bodiless framework reply still ships an envelope.
-- **Rate limiting before authentication**, deliberately: rejecting an over-quota request should not
-  first cost a signature validation and a JWKS lookup, which is precisely the work an attacker
-  wants to force.
+- **Rate limiting after authentication**, deliberately. The limiter partitions on the user's
+  stable subject. Run before authentication, `context.User` is always anonymous, and behind the
+  gateway every caller fell into one bucket keyed by the proxy's address. The cost accepted is one
+  JWT validation (signing keys are cached, so no network call) per over-quota request; anonymous
+  floods are still bounded per client IP, and health probes opt out.
+- **Sign-in recording and idempotency after authorization.** Both need the caller resolved, and an
+  unauthorized caller must be refused before it can claim a key or be recorded as a sign-in.
 - **Health endpoints** are mapped last and all three call `.DisableRateLimiting()`. `/health` is
   aliased to *liveness*, not readiness, so a transient database blip cannot flap a healthy instance
   out of the load balancer's rotation. `/health/ready` runs the checks tagged `ready`, which is
@@ -730,47 +743,73 @@ only when an endpoint is configured, so local runs are unaffected.
 
 ### Where authentication ends and authorization begins
 
-The split is clean, and knowing exactly where the line falls saves a lot of confusion:
+The API never signs anyone in. Sign-in is the job of a separate service and a gateway in front of
+the API; **the API only validates a Keycloak JWT**. The whole model, with diagrams, is in
+[docs/auth/](auth/README.md); this section is what lives in the API's code.
 
 ```mermaid
 flowchart LR
-  subgraph AUTHN["Authentication — WHO is calling"]
-    T["Bearer token"] --> V["JWT validation - issuer, signature, expiry"]
+  subgraph OUT["Outside the API: sign-in (docs/auth/)"]
+    B["Browser - cookie only"] --> N["nginx gateway"]
+    N --> AS["Auth service<br/>Entra sign-in + Keycloak exchange"]
+  end
+  subgraph AUTHN["Authentication - WHO is calling"]
+    N -->|"Authorization: Bearer jwt"| V["JWT validation<br/>issuer, signature, expiry, azp"]
     V --> CT["KeycloakRoleClaimsTransformation"]
   end
-  subgraph AUTHZ["Authorization — WHAT they may do"]
-    CT --> CAP["RoleCapabilities.For(roles)"]
-    CAP --> P["Policies: ReadAccess · WriteAccess · AdminAccess"]
+  subgraph AUTHZ["Authorization - WHAT they may do"]
+    CT --> CAP["RoleCapabilities.For(roles, permissions)"]
+    CAP --> P["Policies: ReadAccess, WriteAccess, AdminAccess"]
     P --> EP["[Authorize] on the controller or action"]
-    CAP --> OWN["ForbiddenException — checks needing the loaded record"]
+    CAP --> ME["GET /api/v1/me"]
+    CAP --> OWN["ForbiddenException - checks needing the loaded record"]
   end
 ```
 
-**Authentication** is `src/backend/src/AjBoilerplate.Api/Identity/AuthenticationSetup.cs`. It picks
-a scheme in a strict order:
+**Authentication** is `src/backend/src/AjBoilerplate.Api/Identity/AuthenticationSetup.cs`. There is
+exactly one mode, `Auth:Mode=gateway` (blank means the same; anything else stops the API), and it
+picks a scheme in a strict order:
 
-1. **Keycloak**, when the `Keycloak` configuration section is present. This is the recommended
-   topology — Keycloak federates to the cloud identity provider and issues the tokens this API
-   validates, so authorization is identical on every cloud. Signing keys come from
-   `Keycloak:JwksUri` via `Identity/KeycloakSigningKeyProvider.cs`, falling back to OIDC discovery
-   only when that is blank, and `Identity/KeycloakAuthenticationEvents.cs` rejects a token whose
-   `azp` names a different client.
-2. **The cloud identity provider directly** — Google Cloud Identity for `CLOUD_PROVIDER=gcp`,
-   Microsoft Entra ID for `azure`. This is the **only** place authentication branches on the cloud,
-   and the branch selects a configuration section and nothing more.
-3. **Nothing configured** (local, offline, CI) — a bare JWT scheme with no signing authority, so
+1. **Keycloak**, when `Keycloak:ValidIssuer` and a `JwksUri` or `Authority` are configured. Signing
+   keys come from `Keycloak:JwksUri` via `Identity/KeycloakSigningKeyProvider.cs` and are
+   **pre-warmed at start-up**, so an unreachable identity host announces itself as a start-up
+   warning rather than as a stranger's failed request. Outside Development a plaintext JWKS URI
+   stops the API (unless `Keycloak:AllowInsecureJwksTransport` is set on purpose, which logs a
+   warning on every start), and so does a missing `JwksUri` (unless
+   `Keycloak:AllowDiscoveryFallback` is set). `Identity/KeycloakAuthenticationEvents.cs` rejects a
+   token whose `azp` is not `Keycloak:ClientId`, and **audience is deliberately not validated**:
+   a token obtained by exchange carries `azp`, not a stable `aud`. A blank client id rejects
+   everything.
+2. **Nothing configured** (local, offline, CI) — a bare JWT scheme with no signing authority, so
    protected endpoints correctly answer 401 rather than failing to start or, far worse, silently
    accepting anything.
 
-Note `ClockSkew = TimeSpan.Zero` in both configured cases. The default five-minute tolerance lets
-`JwtBearer` accept a token past its own `exp`; these are machine-to-machine tokens with no
-interactive browser clock to accommodate.
+There is **no "cloud identity provider directly" scheme** and no branch on `CLOUD_PROVIDER` here.
+Users sign in against Entra ID on either cloud, via the Auth service, and the API sees the same
+token shape everywhere ([ADR-0012](adr/0012-gateway-session-auth.md)).
+
+Note `ClockSkew = TimeSpan.Zero`. The default five-minute tolerance lets `JwtBearer` accept a token
+past its own `exp`; these tokens are minted by a server whose clock we trust.
+
+**Roles** reach the principal from `resource_access.<clientId>` and the flat `roles` claim, as
+`ClaimTypes.Role`. Realm-wide roles count only when `Keycloak:HonourRealmRoles=true`. Strings
+shaped `resource:action` are **permissions**, projected to their own claim type
+(`https://schemas.aj-boilerplate/claims/permission`) and never read as seats. A key that is neither
+a known seat nor a known permission is dropped and logged once.
 
 **Authorization** starts once a `ClaimsPrincipal` exists. There are three policies —
 `Policies.ReadAccess`, `Policies.WriteAccess`, `Policies.AdminAccess`
 (`Identity/AuthorizationPolicies.cs`) — and none of them names a role inline. Each resolves through
 `src/backend/src/AjBoilerplate.Application/Identity/RoleCapabilities.cs`, which is the single source
-of truth for what a role may do and fails closed for anything unrecognised.
+of truth for what a seat or a permission may do and fails closed for anything unrecognised. A policy
+is satisfied by **a seat OR a permission** (`items:read`, `items:write`, `admin:manage` ship as
+examples). `GET /api/v1/me` resolves through the same function, so the server's decision and the
+flags the SPA shows cannot disagree. A **fallback policy** requires an authenticated user on any
+endpoint that declares nothing, and the health endpoints opt out with `AllowAnonymous`.
+
+`GET /api/v1/me` (`Controllers/MeController.cs`) is authenticated but deliberately **not** behind a
+role policy: gating it on `ReadAccess` would answer 403 to exactly the person who most needs an
+answer, someone signed in whose account has no role yet. They get a 200 with every capability false.
 
 `src/backend/src/AjBoilerplate.Application/Identity/ApplicationRoles.cs` holds the role vocabulary
 and the one canonicalisation table. Its comment explains a real trap: Keycloak emits lowercase role
@@ -783,6 +822,13 @@ on the server until someone's list silently comes back empty.
 Two checks that policies cannot make belong in the service layer instead: ownership and record
 scope, which are only decidable after the record is loaded. Those throw `ForbiddenException`, which
 `ForbiddenExceptionHandler` maps to the same enveloped 403 a policy failure produces.
+
+**The Auth service** (`src/backend/src/AjBoilerplate.Auth/`) is a second ASP.NET Core host, not a
+layer. It references none of the five API projects and none of them reference it; the architecture
+tests enforce both directions. It owns the Entra sign-in, the Keycloak exchange, the sessions
+(SQL Server system of record, Redis in front) and `/auth/validate`. Keeping it out of the layers
+is what lets a project inside the Al Jazeera USP platform delete it and sit behind USP's shared
+gateway without touching the API.
 
 ### Optimistic concurrency
 
@@ -867,19 +913,17 @@ Both tables ship in the `InitialCreate` migration and are configured in
 ### The `CLOUD_PROVIDER` switch and `ISecretsProvider`
 
 `CLOUD_PROVIDER` (bound to `Cloud:Provider`) accepts `gcp` or `azure`. What it actually changes is
-narrower than most people expect — **two registrations**:
+narrower than most people expect: **one registration** (secrets), plus which `infra/` tree deploys.
+Identity used to branch here too; since [ADR-0012](adr/0012-gateway-session-auth.md) it does not.
 
 ```mermaid
 flowchart TD
   ENV["CLOUD_PROVIDER = gcp | azure"] --> RES["CloudOptions.Resolve() — throws on anything else"]
   RES --> S["Secrets"]
-  RES --> A["Authentication issuer"]
   S --> SG["GcpSecretManagerSecretsProvider"]
   S --> SA["AzureKeyVaultSecretsProvider"]
   S --> SN["NullSecretsProvider — store unconfigured"]
-  A --> AG["Google Cloud Identity"]
-  A --> AA["Microsoft Entra ID"]
-  RES -.-> NB["Never branches: cache, database, authorization"]
+  RES -.-> NB["Never branches: identity, cache, database, authorization"]
 ```
 
 `src/backend/src/AjBoilerplate.Infrastructure/Cloud/CloudOptions.cs` owns the parsing, and
@@ -892,7 +936,9 @@ line in a deployment's startup log and the most confusing thing to be silently w
 The cache deliberately does **not** branch: Memorystore for Redis and Azure Cache for Redis speak
 the same wire protocol, so one `ConnectionStrings:Redis` and one `AddStackExchangeRedisCache`
 registration serve both, and the difference lives entirely in `infra/`. Neither does the database
-(SQL Server on both), nor authorization (Keycloak on both).
+(SQL Server on both), nor identity or authorization (Entra ID through the Auth service, then
+Keycloak, on both). The Auth service does not load the secret store at all: it reads environment
+variables, so the platform injects its secrets.
 
 Secrets have **two halves**, and conflating them is the usual confusion:
 
@@ -993,8 +1039,9 @@ own entry listing the shared scopes it may consume. The file says this in its he
 tokens. It contains almost no logic.
 
 **May live here.** `src/app/app.config.ts` (providers), `src/app/app.routes.ts` (routing),
-`src/app/pages/` (the public pages that render *outside* the authenticated shell — login, auth
-callback, signing out, access denied, not found, plus the authenticated landing page),
+`src/app/pages/` (the public pages that render *outside* the authenticated shell — login, signing
+out, access denied, "access check unavailable", not found, plus the authenticated landing page;
+there is no auth callback page, because the Auth service owns `/auth/callback`),
 `src/design/tokens.css` and `src/design/components.css`, `src/styles/app-preset.ts` (the PrimeNG
 theme preset), `src/mocks/` (the MSW handlers for the offline `demo` build).
 
@@ -1009,9 +1056,10 @@ with the landing route **eager** (it is every user's first paint, so code-splitt
 round trip) and every feature route lazy via `loadComponent`. `items/new` and `items/:id` add
 `capabilityGuard('canCreate')` and `capabilityGuard('canEdit')`.
 
-`src/app/app.config.ts` is where the three DI seams are bound — `AUTH_TOKEN_PROVIDER`,
-`TOKEN_REFRESHER`, `SESSION_EXPIRED_NOTIFIER` — which is how `data-access` handles auth without
-importing `libs/auth` (the boundary rule forbids that direction). It also fixes the interceptor
+`src/app/auth-seams.ts`, provided from `app.config.ts`, binds the DI seams `SESSION_EXPIRED_NOTIFIER`
+and `AMBIENT_SESSION_ACTIVE` — which is how `data-access` reacts to a 401 without importing
+`libs/auth` (the boundary rule forbids that direction). There is no token seam: the browser holds
+no token. It also fixes the interceptor
 order, with a comment: `authInterceptor` must run **before** `envelopeInterceptor` so that by the
 time it inspects a failure it is looking at the unwrapped `ApiError`, not a raw
 `HttpErrorResponse`.
@@ -1102,7 +1150,8 @@ the boundary rule forbids it, which is precisely why the DI seams exist.
 | File | What it does |
 |---|---|
 | `src/lib/envelope-interceptor.ts` | Unwraps `ApiResponse<T>` so downstream code sees plain `T`; throws `ApiError` when `success: false`, **whatever the HTTP status**; passes `Blob` bodies through untouched |
-| `src/lib/auth-interceptor.ts` | Attaches `Authorization: Bearer …`; on a 401 for a request that *carried* a token, attempts one refresh and retries exactly once, then fires the session-expired notifier |
+| `src/lib/auth-interceptor.ts` | Attaches nothing (nginx injects the JWT). On a 401 while a gateway session is live it fires the session-expired notifier, which sends the user to `/login`; suppressed while the access-revoked dialog is open |
+| `src/lib/access-revoked.ts` | Recognises `403` + `X-Usp-Access: revoked` and opens the access-revoked dialog |
 | `src/lib/api-error.ts` | `ApiError` plus `isConflictError`, `conflictData`, and `apiErrorMessage` — one shared implementation so every `onError` reports a conflict identically |
 | `src/lib/items-api.service.ts` | **SAMPLE** — the per-feature service pattern: one injectable, typed methods over `HttpClient`, versioned paths only, no manual envelope handling |
 | `src/lib/feature-announcements-api.service.ts` | The "What's new" gateway: `unack(path)` and `ack(ids)`. `unack` coalesces a null envelope payload to `[]`, so no caller writes a null check for "nothing pending" |
@@ -1127,18 +1176,21 @@ second is calling an unversioned path — `/api/items` instead of `/api/v1/items
 **Single responsibility.** Own the session, expose capabilities, and guard routes — as a **UX
 convenience only**.
 
-**May live here.** `src/lib/roles.ts` (the role list and the role → capability map — the only place a
-role name may appear), `auth.service.ts`, `auth.guard.ts`, `capability.guard.ts`, the providers
-under `src/lib/providers/`, and `sanitize-return-path.ts`.
+**May live here.** `src/lib/roles.ts` (the role list, the role → capability map and the permission →
+capability map — the only place a role or permission name may appear), `auth.service.ts`,
+`auth.guard.ts`, `capability.guard.ts`, the providers under `src/lib/providers/` (`gateway`, the
+default, and `dev`, the role picker), and `sanitize-return-path.ts`.
 
 **May not live here.** Anything that treats a client-side check as a security control. Any UI beyond
 the guards' redirects.
 
 **Depends on.** `data-access` and `shared-util`.
 
-**In the sample slice.** `AuthService` holds the session as a signal and resolves the authoritative
-profile through a TanStack query, falling back to the session's roles while that query is in flight
-so the UI never flashes unauthorized-looking chrome. `authGuard` redirects to `/login` preserving a
+**In the sample slice.** In gateway mode the session is *ambient*: the app cannot see the cookie, so
+`GET /api/v1/me` answering 200 is the only proof a session exists. `AuthService` resolves that
+profile through a TanStack query, falling back to the session's roles while the query is in flight
+so the UI never flashes unauthorized-looking chrome. The gateway provider's `signIn()` is a
+full-page navigation to `/auth/login`, and `signOut()` is `POST /auth/logout`. `authGuard` redirects to `/login` preserving a
 **sanitized** return path — identity providers routinely echo their own protocol parameters onto the
 post-logout landing URL, and capturing that verbatim puts the blob in the address bar and compounds
 it across sign-in cycles.
@@ -1156,11 +1208,11 @@ the URL still gets a 403 from the server, which is the actual control.
 must derive from `capabilities()`, so there is exactly one place to change when the permission model
 moves. The second mistake is believing the guard *is* the permission.
 
-> **Note on `/api/v1/me`.** The OIDC provider fetches a `UserProfile` from `GET /api/v1/me`, and
-> `libs/auth/README.md` lists implementing that endpoint as step 2 of wiring a real identity
-> provider. The backend in this repository ships `ItemsController` and `FeaturesController` and
-> nothing else, so that endpoint does not exist yet — you add it, then replace the hand-written
-> `UserProfile` interface with the generated type.
+> **`GET /api/v1/me`** exists and is how the SPA learns who the user is. `UserProfile` is
+> hand-written, because the generated `UserProfileResponse` makes every field optional;
+> `user-profile.contract.spec.ts` checks it against the committed OpenAPI document so it cannot
+> drift. If `/me` fails for a reason other than the server's verdict, the guard shows "access
+> check unavailable" instead of "access denied": an outage is not a denial.
 
 ---
 
@@ -1245,9 +1297,11 @@ content area.
 
 **May live here.** `nav-config.ts` (the navigation), `app-layout.ts` (the component the guarded
 route group renders into; it also owns the route → page-title mapping, the redirect on session
-expiry, and the "What's new" sweep), `sidebar.ts` and `top-bar.ts` (presentation only).
+expiry, and the "What's new" sweep), `sidebar.ts` and `top-bar.ts` (presentation only), and
+`role-change/` (the role-change watcher that polls `/auth/roles-version` every 15 s, the
+access-revoked watcher, and their two blocking dialogs).
 
-**May not live here.** Feature logic. Public pages — login, auth callback, signing out, and 404
+**May not live here.** Feature logic. Public pages — login, signing out, access denied, and 404
 deliberately render **outside** this shell.
 
 **Depends on.** `auth`, `data-access`, `shared-ui`, `shared-util`.
