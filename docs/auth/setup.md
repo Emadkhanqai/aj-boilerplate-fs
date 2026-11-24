@@ -11,8 +11,9 @@ behaviour, read the [gateway contract](gateway-contract.md). If something is bro
 > Entra tenant or a Keycloak with a real Entra identity provider. The default values equal
 > the ones the Al Jazeera USP platform ran against Entra ID on its staging environment, and the
 > reasons for them are in the code comments of `AuthOptions.cs`. Treat the Entra and Keycloak
-> steps as a checklist to verify, not as a recipe that has been proven here. Nothing in `infra/`
-> deploys the Auth service, the web gateway or Keycloak (see [What is not deployed](#what-is-not-deployed)).
+> steps as a checklist to verify, not as a recipe that has been proven here. `infra/gcp` deploys the
+> Auth service and the web gateway but never Keycloak, and `infra/azure` deploys neither (see
+> [Deploying](#deploying-the-auth-service-and-the-web-gateway) and [What is not deployed](#what-is-not-deployed)).
 
 ## Pick your path
 
@@ -231,15 +232,54 @@ A deployment is verified when:
 4. `GET /api/v1/me` in the browser returns your roles and permissions.
 5. A user with no role gets the 403 "No access" page, not a login loop.
 
+### Deploying the Auth service and the web gateway
+
+**On Google Cloud only**, and not verified by an apply: `infra/gcp` (Terraform) deploys the web
+container, the Auth service and its migration job, alongside the API, and `.github/workflows/deploy.yml`
+builds the two images and rolls the four out in a safe order. Start at
+[`infra/gcp/README.md`](../../infra/gcp/README.md); this section is the sign-in half of it.
+
+**Keycloak is external.** An existing Keycloak server is used, as on USP. `infra/gcp` takes its base
+URL, realm, issuer, JWKS URL and client id as variables and reads the portal client's secret from
+Secret Manager. It does not deploy, configure or change Keycloak or the identity provider, so
+everything in sections 2a and 2b is done by hand first.
+
+What you create before the first deployment:
+
+| What | Where it goes |
+|---|---|
+| Identity provider app registration (section 2a), redirect URI **`<public origin>/auth/callback`** | `entra_authority`, `entra_client_id` |
+| Keycloak client, roles and identity provider (section 2b) | `keycloak_base_url`, `keycloak_realm`, `keycloak_portal_client_id`, `keycloak_subject_issuer` |
+| Secret Manager secret holding the app registration's client secret | name `<name_prefix>-<environment>-entra-client-secret`, becomes `Auth__Entra__ClientSecret` |
+| Secret Manager secret holding the portal client's secret | name `<name_prefix>-<environment>-keycloak-client-secret`, becomes `Auth__Portal__ClientSecret` |
+
+The public origin is not known until the web service exists, unless you set `public_origin` (a custom
+domain or a load balancer). `terraform output web_url` prints it. Register the redirect URI, then sign in.
+
+What the infrastructure generates and injects by Secret Manager reference, so you do not: the Auth
+database connection string, the session encryption key, the Redis address and, only when
+`auth_admin_api_key_enabled` is true, the admin API key.
+
+The web container runs with `UPSTREAM_AUTH=cloud-run-id-token`: the API and the Auth service accept
+only a caller holding a Google ID token for the gateway's service account, and the gateway sends one
+on every hop as `X-Serverless-Authorization`. Why that and not `ingress = internal`, and what it costs,
+is in the infra README. Locally and anywhere else the default `none` applies and nothing changes.
+
+The Auth service's migrations are applied by a Cloud Run job, `auth-migrate`, that the deploy executes
+and waits for before it rolls out the Auth service. It is a release step, never start-up.
+
+**Not verified:** no apply, no image build against a registry and no sign-in through a deployed gateway
+has been run. Verify a first deployment with the five checks above ("Run the migration, then verify").
+
 ### What is not deployed
 
-`infra/gcp` (Terraform) and `infra/azure` (Bicep) provision the **API**, its database, Redis and
-secrets. They do not create the web container, the Auth service, the Auth database, or Keycloak,
-and `.github/workflows/deploy.yml` rolls out only the API image (the `API_IMAGE` variable). The compose file is
-the only place all of them run together today. Deploying the Auth service and the web container is
-your project's work. For TLS, remember that nginx must receive `X-Forwarded-Proto` from your load
-balancer (the web container's rate limits also key on the peer address, so configure
-`set_real_ip_from` for your balancer; see [troubleshooting](troubleshooting.md)).
+- **On Azure, nothing of this.** `infra/azure` (Bicep) provisions the API, its database, Redis and
+  secrets only, and `deploy.yml` rolls out only the API image there. Deploying the web container and
+  the Auth service on Azure is your project's work; the infrastructure is Google Cloud only.
+- **On either cloud, Keycloak and the identity provider.** They are existing external services.
+- **Behind a load balancer**, remember that nginx must receive `X-Forwarded-Proto` (Cloud Run sends it),
+  and that the web container's rate limits also key on the peer address, so configure
+  `set_real_ip_from` for your balancer; see [troubleshooting](troubleshooting.md).
 
 ---
 
@@ -392,3 +432,4 @@ Read **at container start**, so one image serves every environment. They do not 
 | `AUTH_PROVIDER` | `embedded` | `AUTH_MODE=gateway` | `embedded` (this container is the gateway) or `usp` (static files only). Anything else stops the container. |
 | `API_UPSTREAM` | `http://api:8080` | `embedded`, `dev` | Where `/api/` goes. Must not be empty for those profiles. |
 | `AUTH_UPSTREAM` | `http://auth:8080` | `embedded` | The Auth service. Must not be empty for that profile. |
+| `UPSTREAM_AUTH` | `none` | `embedded` | How the two upstreams above are reached. `none`: plain `proxy_pass`, the browser's `Host`. `cloud-run-id-token`: both are Cloud Run services; nginx loads njs, takes a Google ID token per upstream from the metadata server and sends it as `X-Serverless-Authorization`. Both upstreams must then be `https://`. Anything else stops the container. |

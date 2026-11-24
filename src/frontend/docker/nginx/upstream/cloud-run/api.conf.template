@@ -1,0 +1,9 @@
+# A VARIABLE proxy_pass is resolved per request through the resolver in http.conf. The Host must be
+# the target's own ($proxy_host): Cloud Run routes on Host and SNI and answers 404 to the public name.
+set $api_origin "${API_UPSTREAM}";
+proxy_pass $api_origin;
+proxy_set_header Host $proxy_host;
+proxy_ssl_server_name on;
+proxy_ssl_verify on;
+proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+proxy_set_header X-Serverless-Authorization "Bearer $api_id_token";

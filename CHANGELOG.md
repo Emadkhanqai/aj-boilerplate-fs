@@ -149,6 +149,14 @@ is in [docs/auth/](docs/auth/README.md).
 - **A local sign-in stack with no Microsoft tenant**: the bundled Keycloak realm
   (`infra/keycloak/realm-aj-boilerplate.json`, dev-only secrets) and seeded users `admin`, `editor`,
   `viewer` and `noaccess`.
+- **Google Cloud deployment of the Auth service and the web gateway.** `infra/gcp` now creates the
+  `auth` and `web` Cloud Run services, the `auth-migrate` job, the Auth database and its secrets, and
+  points the API at an external Keycloak. `deploy.yml` builds the two images and rolls out the
+  migration, the API and Auth service, then the gateway, and reads the live services back. The web
+  image gains `UPSTREAM_AUTH=cloud-run-id-token` (default `none`, unchanged behaviour), which sends a
+  Google ID token to the API and Auth service so they need no public invoker. The supply-chain scan now
+  covers the Auth image. **Azure is unchanged: the Bicep deploys the API only.** Keycloak is not
+  deployed anywhere. **No apply has been run**; see [`infra/gcp/README.md`](infra/gcp/README.md#what-is-and-is-not-verified).
 - **Documentation**: [`docs/auth/`](docs/auth/README.md) (overview, setup, troubleshooting, contract)
   and ADR-0012. The root `README.md` was rewritten around a five-minute quickstart.
 
@@ -180,9 +188,10 @@ is in [docs/auth/](docs/auth/README.md).
 
 ### Not in this release
 
-- **Nothing deploys the Auth service, the web container or Keycloak.** `infra/` and `deploy.yml`
-  still provision and roll out the API, its database, Redis and secrets only. Projects using
-  `embedded` deploy the rest themselves.
+- **Nothing deploys Keycloak, and on Azure nothing deploys the Auth service or the web container.**
+  `infra/azure` and its `deploy.yml` path still provision and roll out the API, its database, Redis
+  and secrets only. On Google Cloud, `infra/gcp` deploys the Auth service and the web gateway, but
+  that path has not been applied against a project.
 - **No real Entra tenant has been exercised in this repository.** The local stack replaces Entra with
   a second Keycloak client. See [docs/auth/setup.md](docs/auth/setup.md).
 

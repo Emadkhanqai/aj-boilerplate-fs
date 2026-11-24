@@ -1,0 +1,23 @@
+# UPSTREAM_AUTH=cloud-run-id-token. The API and Auth services are Cloud Run services that accept only
+# callers holding a Google ID token for their URL, so this container proves who it is on every hop.
+#
+# How: njs asks the metadata server for an ID token per audience (the service's own URL) off the
+# request path and keeps it in a shared dictionary; the hops send it as `X-Serverless-Authorization`.
+# That header, not `Authorization`, because Cloud Run reads and strips it and leaves `Authorization`
+# to the application, which needs it for the Keycloak JWT.
+#
+# `load_module` and `env` are main-context directives; 16-nginx-profile.sh adds them to nginx.conf.
+
+# Cloud Run's resolver is the metadata server. The proxy_pass targets are variables, so hosts are
+# looked up at request time and a changed Google front-end address needs no restart.
+resolver 169.254.169.254 valid=30s ipv6=off;
+
+js_path /etc/nginx/njs;
+js_import token from token.js;
+js_shared_dict_zone zone=tokens:64k timeout=24h evict;
+
+# Two variables, not one: a gated request carries two hops (the auth_request subrequest and the
+# proxied request) and they share a variable array, so one variable would hand the second hop the
+# first hop's token.
+js_set $api_id_token token.forApi;
+js_set $auth_id_token token.forAuth;

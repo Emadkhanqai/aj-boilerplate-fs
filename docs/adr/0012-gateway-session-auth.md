@@ -90,9 +90,10 @@ and `Authentication:EntraId` API schemes; `Keycloak:Realm`, `Keycloak:ClientSecr
 ### Negative
 
 - **More to run.** A project outside USP deploys the web gateway, an Auth service, an Auth database
-  schema and Redis, and needs a Keycloak that can exchange an Entra token. The boilerplate's
-  `infra/` provisions none of the Auth service, the web container or Keycloak today; that is
-  the adopting project's work.
+  schema and Redis, and needs a Keycloak that can exchange an Entra token. `infra/gcp` deploys the
+  Auth service, its migration job and the web container against an existing Keycloak it never
+  deploys (not yet applied against a project); `infra/azure` deploys none of them, and on Azure that
+  is the adopting project's work.
 - **The real-Entra path is not exercised in this repository.** The local stack replaces Entra
   with a second Keycloak client and uses Keycloak's standard (internal) token exchange. The
   external-token exchange against a real tenant is untested here.
@@ -114,8 +115,8 @@ and `Authentication:EntraId` API schemes; `Keycloak:Realm`, `Keycloak:ClientSecr
 
 ### Follow-on work
 
-- Deployment of the Auth service and web gateway in `infra/` and `deploy.yml`, if your project
-  uses `embedded`.
+- Deployment of the Auth service and web gateway on Azure (Bicep). Done on Google Cloud, in
+  `infra/gcp` and `deploy.yml`, and not yet applied against a project.
 - Exercising the real-Entra and external-exchange path against a test tenant.
 
 ## Alternatives considered
