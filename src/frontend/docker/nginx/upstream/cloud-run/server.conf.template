@@ -1,0 +1,13 @@
+# Refreshes both ID tokens off the request path. A token lives about an hour; refreshing every minute
+# means a failed refresh is retried many times while the previous token (kept, see token.js) is
+# still valid.
+location @refresh_tokens {
+    js_periodic token.refreshAll interval=60s;
+}
+
+# Readiness: 200 only once both tokens exist. Without it the first requests after a cold start reach
+# Cloud Run IAM with no token and get a 403, which reads as "not signed in".
+location = /readyz {
+    access_log off;
+    js_content token.ready;
+}

@@ -61,6 +61,11 @@ limit_req_zone $auth_signin_key zone=auth_signin:10m rate=10r/s;
 limit_req_zone $auth_roles_version_key zone=auth_roles_version:10m rate=150r/s;
 limit_req_status 429;
 
+# How the three upstream hops are reached (proxy_pass, Host, and for Cloud Run an ID token). One of
+# two variants (docker/nginx/upstream/none or /cloud-run) is rendered into conf.d/upstream/ at start
+# by 16-nginx-profile.sh, chosen by UPSTREAM_AUTH.
+include /etc/nginx/conf.d/upstream/http.conf;
+
 server {
     listen 80;
     server_name _;
@@ -74,6 +79,8 @@ server {
     absolute_redirect off;
 
     include /etc/nginx/snippets/security-headers.conf;
+
+    include /etc/nginx/conf.d/upstream/server.conf;
 
     # ---- Ungated: liveness, and the config the app reads before it can know anything -----------
     location = /healthz {
@@ -92,10 +99,9 @@ server {
     # ---- Internal: the one call that decides everything ----------------------------------------
     location = /_auth_validate {
         internal;
-        proxy_pass ${AUTH_UPSTREAM}/auth/validate;
+        include /etc/nginx/conf.d/upstream/validate.conf;
         proxy_pass_request_body off;
         proxy_set_header Content-Length "";
-        proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-For $remote_addr;
@@ -128,8 +134,7 @@ server {
         include /etc/nginx/snippets/security-headers.conf;
         # The JWT must never reach a browser, whatever the Auth service does.
         proxy_hide_header X-Auth-Jwt;
-        proxy_pass ${AUTH_UPSTREAM};
-        proxy_set_header Host $host;
+        include /etc/nginx/conf.d/upstream/auth.conf;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-For $remote_addr;
@@ -157,8 +162,7 @@ server {
         proxy_hide_header X-Usp-Access;
         proxy_hide_header X-Auth-Jwt;
 
-        proxy_pass ${API_UPSTREAM};
-        proxy_set_header Host $host;
+        include /etc/nginx/conf.d/upstream/api.conf;
         proxy_set_header X-Forwarded-Host $host;
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
         proxy_set_header X-Forwarded-For $remote_addr;

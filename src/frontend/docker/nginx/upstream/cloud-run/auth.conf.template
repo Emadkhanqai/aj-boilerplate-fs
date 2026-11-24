@@ -1,0 +1,8 @@
+# See api.conf.template for why each line is here.
+set $auth_origin "${AUTH_UPSTREAM}";
+proxy_pass $auth_origin;
+proxy_set_header Host $proxy_host;
+proxy_ssl_server_name on;
+proxy_ssl_verify on;
+proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+proxy_set_header X-Serverless-Authorization "Bearer $auth_id_token";

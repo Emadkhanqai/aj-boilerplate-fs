@@ -24,6 +24,10 @@ COPY --from=build /src/dist/apps/web/browser /usr/share/nginx/html
 # three profiles in /etc/nginx/profiles into place, chosen by AUTH_MODE / AUTH_PROVIDER.
 COPY docker/nginx/embedded.conf.template docker/nginx/usp.conf.template docker/nginx/dev.conf.template /etc/nginx/profiles/
 COPY docker/nginx/snippets/ /etc/nginx/snippets/
+# The two ways the embedded profile reaches the API and the Auth service (UPSTREAM_AUTH), and the njs
+# that mints Google ID tokens for the Cloud Run one. 16-nginx-profile.sh renders one variant.
+COPY docker/nginx/upstream/ /etc/nginx/upstream-profiles/
+COPY docker/njs/token.js /etc/nginx/njs/token.js
 COPY docker/nginx/pages/gateway-pages.css /usr/share/nginx/gateway/gateway-pages.css
 COPY docker/16-nginx-profile.sh /docker-entrypoint.d/16-nginx-profile.sh
 COPY docker/40-env.sh /docker-entrypoint.d/40-env.sh
@@ -34,6 +38,7 @@ RUN chmod +x /docker-entrypoint.d/16-nginx-profile.sh /docker-entrypoint.d/40-en
 #   AUTH_PROVIDER   embedded | usp      who runs the gate: this container, or USP's shared gateway
 #   API_UPSTREAM    where /api/ goes    (embedded and dev profiles)
 #   AUTH_UPSTREAM   the Auth service    (embedded profile)
+#   UPSTREAM_AUTH   none | cloud-run-id-token   how the two upstreams above are reached (embedded profile)
 ENV AUTH_MODE=gateway \
     AUTH_PROVIDER=embedded \
     API_UPSTREAM=http://api:8080 \
