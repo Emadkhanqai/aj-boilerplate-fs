@@ -1,4 +1,5 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.AuthenticationHistory;
 using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Idempotency;
 using AjBoilerplate.Application.Identity;
@@ -30,6 +31,9 @@ public static class DependencyInjection
 
         // Claims and releases Idempotency-Key records for the Api layer's middleware.
         services.AddScoped<IIdempotencyService, IdempotencyService>();
+
+        // One sign-in row per gateway session, for SignInRecordingMiddleware.
+        services.AddScoped<ISignInRecorder, SignInRecorder>();
 
         services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
 

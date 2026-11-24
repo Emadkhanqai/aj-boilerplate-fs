@@ -44,6 +44,53 @@ public sealed class KeycloakSigningKeyProvider
     }
 
     /// <summary>
+    /// Fills the key cache once at start-up, before the host accepts traffic, so the first real request
+    /// is not the thing that discovers an unreachable JWKS endpoint — on a cloud runtime with no route
+    /// out (no NAT, or an egress setting that sends internet traffic into a VPC with no way out) the
+    /// fetch hangs until the HttpClient timeout, and a user would meet that as a failed sign-in.
+    ///
+    /// <para>
+    /// A failure NEVER throws: an unreachable identity endpoint is an infrastructure fault, and making
+    /// it fatal would turn a degraded service into a crash-looping revision that cannot even serve
+    /// <c>/health</c>. The key COUNT in the success line is load-bearing — it is the acceptance test
+    /// for the network fix. Never log the keys or the JWKS body.
+    /// </para>
+    ///
+    /// <para>
+    /// <c>_lastFetchUtc</c> is stamped only on SUCCESS. Stamping it before the fetch would let a failed
+    /// pre-warm suppress the lazy refetch in <see cref="GetSigningKeys"/> for the whole cooldown minute,
+    /// contradicting the warning logged here.
+    /// </para>
+    /// </summary>
+    public async Task WarmUpAsync()
+    {
+        if (_options.JwksUriIsInsecure)
+        {
+            // Reachable only in Development: AuthenticationSetup refuses to start with this anywhere else.
+            _logger.LogWarning(
+                "Keycloak JWKS is fetched over plaintext transport ({Scheme}); signing keys can be substituted on the network path. Development only.",
+                Uri.TryCreate(_options.JwksUri, UriKind.Absolute, out var jwks) ? jwks.Scheme : "unparsable");
+        }
+
+        var fetched = await FetchAsync();
+
+        if (fetched is null)
+        {
+            _logger.LogWarning(
+                "Keycloak JWKS pre-warm at startup failed; the first request needing a signing key will trigger a fetch instead (see GetSigningKeys).");
+            return;
+        }
+
+        lock (_gate)
+        {
+            _keysByKid = fetched;
+            _lastFetchUtc = DateTimeOffset.UtcNow;
+        }
+
+        _logger.LogInformation("Keycloak JWKS pre-warmed at startup: {KeyCount} signing key(s) loaded.", fetched.Count);
+    }
+
+    /// <summary>
     /// Returns the signing key(s) matching <paramref name="kid"/>. Shaped to be used directly as an
     /// <see cref="TokenValidationParameters.IssuerSigningKeyResolver"/> delegate body.
     /// </summary>

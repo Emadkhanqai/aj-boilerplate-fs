@@ -1,3 +1,4 @@
+using AjBoilerplate.Domain.AuthenticationHistory;
 using AjBoilerplate.Domain.Features;
 using AjBoilerplate.Domain.Idempotency;
 using AjBoilerplate.Domain.Items;
@@ -34,6 +35,8 @@ public sealed class AppDbContext : DbContext
     /// <summary>Stored responses for unsafe requests carrying an <c>Idempotency-Key</c>, so a retried
     /// create replays rather than writing twice.</summary>
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+
+    public DbSet<AuthenticationEvent> AuthenticationEvents => Set<AuthenticationEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

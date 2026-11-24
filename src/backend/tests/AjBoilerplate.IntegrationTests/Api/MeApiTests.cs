@@ -136,6 +136,8 @@ public sealed class MeApiTests
         Assert.Equal("Test User", data.GetProperty("displayName").GetString());
         Assert.Equal(JsonValueKind.String, data.GetProperty("email").ValueKind);
         Assert.Equal(JsonValueKind.Array, data.GetProperty("roles").ValueKind);
+        // Permissions sit beside the capability flags, as a string array — never inside `roles`.
+        Assert.Equal(JsonValueKind.Array, data.GetProperty("permissions").ValueKind);
 
         var capabilities = data.GetProperty("capabilities");
         foreach (var flag in new[] { "canView", "canCreate", "canEdit", "canDelete", "canAdminister" })

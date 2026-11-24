@@ -1,4 +1,5 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.AuthenticationHistory;
 using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Infrastructure.Cloud;
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
 
         services.AddScoped<IFeatureAnnouncementRepository, FeatureAnnouncementRepository>();
+        services.AddScoped<IAuthenticationEventRepository, AuthenticationEventRepository>();
 
         // SAMPLE SLICE — delete with the rest of the Item sample.
         services.AddScoped<IItemRepository, ItemRepository>();
@@ -103,8 +105,9 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// The CLOUD_PROVIDER switch. Exactly one pair of registrations differs between clouds — the
-    /// secrets provider here, and the authentication issuer in <c>AddApiAuthentication</c>.
+    /// The CLOUD_PROVIDER switch. Exactly one registration differs between clouds — the secrets
+    /// provider here (plus file storage, below). Authentication does not branch on the cloud: the API
+    /// only ever validates Keycloak tokens, see <c>AddApiAuthentication</c>.
     /// </summary>
     private static void AddCloud(IServiceCollection services, IConfiguration configuration)
     {
