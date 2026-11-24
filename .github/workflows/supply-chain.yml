@@ -59,8 +59,8 @@ env:
 
 jobs:
   # ==========================================================================
-  # One job per image. A matrix rather than two near-identical jobs, so that adding a
-  # third image later is three lines rather than a hundred.
+  # One job per image. A matrix rather than near-identical jobs, so that adding another
+  # image later is a few lines rather than a hundred.
   # ==========================================================================
   image-scan:
     name: Scan ${{ matrix.name }} image
@@ -77,12 +77,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `exit_code` is the blocking scan's: 1 fails the job on a fixable HIGH or CRITICAL.
           - name: backend
             context: src/backend
+            dockerfile: src/backend/Dockerfile
             image: aj-boilerplate-api:ci
+            exit_code: '1'
+          # The web container: the SPA and the nginx gateway.
           - name: frontend
             context: src/frontend
+            dockerfile: src/frontend/Dockerfile
             image: aj-boilerplate-web:ci
+            exit_code: '1'
+          # The Auth service. Deployed on GCP, so it is scanned like the API.
+          - name: auth
+            context: src/backend
+            dockerfile: src/backend/src/AjBoilerplate.Auth/Dockerfile
+            image: aj-boilerplate-auth:ci
+            exit_code: '1'
+          # The Auth migration job's image: the same Dockerfile's `build` stage, which is the .NET SDK
+          # plus dotnet-ef. It is deployed and holds the database login while it runs, so it is
+          # scanned and reported, but it does not block: it is a full SDK image, so its HIGH findings
+          # are those of the SDK base image rather than of anything this repository ships, it runs
+          # for seconds, and it is not reachable from a network. Revisit if that stops being true.
+          - name: auth-migrate
+            context: src/backend
+            dockerfile: src/backend/src/AjBoilerplate.Auth/Dockerfile
+            target: build
+            image: aj-boilerplate-auth-migrate:ci
+            exit_code: '0'
 
     steps:
       - uses: actions/checkout@v4
@@ -92,10 +115,13 @@ jobs:
       # action in a supply-chain workflow is the point of the workflow.
       - name: Build the ${{ matrix.name }} image
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           docker build \
+            ${TARGET:+--target "$TARGET"} \
             --tag "${{ matrix.image }}" \
-            --file "${{ matrix.context }}/Dockerfile" \
+            --file "${{ matrix.dockerfile }}" \
             "${{ matrix.context }}"
           docker image inspect "${{ matrix.image }}" \
             --format 'Built {{.RepoTags}}  size={{.Size}} bytes  created={{.Created}}'
@@ -128,7 +154,7 @@ jobs:
           format: table
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
-          exit-code: '1'
+          exit-code: ${{ matrix.exit_code }}
           # The allowlist. Entries carry a justification and an expiry date; see the file.
           trivyignores: .trivyignore.yaml
           # Scan OS packages AND the application dependencies baked into the image — the

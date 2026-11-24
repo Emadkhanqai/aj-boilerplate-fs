@@ -22,9 +22,17 @@ name: Deploy
 # of .github/workflows/deploy-environment.yml — read it before writing a migration that
 # drops or renames anything.
 #
+# What it rolls out depends on the provider. On GCP: the API, the Auth service (with its migration
+# job) and the web container (the nginx gateway). On Azure: the API only; the Auth service, the web
+# container and Keycloak are not deployed there (infra/azure/README.md).
+#
 # Required repository variables:
 #   CLOUD_PROVIDER, and then either
-#   GCP_PROJECT_ID · GCP_REGION · TF_STATE_BUCKET
+#   GCP_PROJECT_ID · GCP_REGION · TF_STATE_BUCKET · NAME_PREFIX · API_IMAGE
+#   ENTRA_AUTHORITY · ENTRA_CLIENT_ID · KEYCLOAK_BASE_URL · KEYCLOAK_REALM · KEYCLOAK_PORTAL_CLIENT_ID
+#   (optional on GCP: PUBLIC_ORIGIN · ENTRA_SCOPES · ENTRA_REQUEST_OWN_CLIENT_ID_SCOPE ·
+#    ENTRA_CLIENT_SECRET_NAME · KEYCLOAK_SUBJECT_ISSUER · KEYCLOAK_ISSUER · KEYCLOAK_JWKS_URL ·
+#    KEYCLOAK_CLIENT_SECRET_NAME · AUTH_ADMIN_API_KEY_ENABLED, each defaulted in infra/gcp/variables.tf)
 #   AZURE_LOCATION · AZURE_NAME_PREFIX
 # For migrations, additionally:
 #   gcp   — CLOUDSQL_INSTANCE_CONNECTION_NAME · DB_NAME · DB_USER · DB_PASSWORD_SECRET
@@ -43,6 +51,9 @@ on:
       # deployment trigger. Without this path the `migrate` job only ever ran when the
       # infrastructure happened to change, which is not when migrations are written.
       - 'src/backend/**'
+      # The web image is built and rolled out by this workflow too, so a frontend change is a
+      # deployment trigger for the same reason a backend one is.
+      - 'src/frontend/**'
       - '.github/workflows/deploy.yml'
       - '.github/workflows/deploy-environment.yml'
   workflow_dispatch:
