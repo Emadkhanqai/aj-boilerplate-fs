@@ -278,8 +278,9 @@ More in [docs/auth/troubleshooting.md](docs/auth/troubleshooting.md).
    Replace the seats and permissions in `Permissions`, `ApplicationRoles` and `libs/auth/.../roles.ts`
    with your own model, and update `infra/keycloak/realm-aj-boilerplate.json` to match.
 5. **Pick your cloud.** Set `CLOUD_PROVIDER`, configure a remote state backend and your variables,
-   and delete the `infra/` tree you do not use. Deploying the web container, the Auth service and
-   Keycloak is your project's work; `infra/` provisions the API, its database, Redis and secrets.
+   and delete the `infra/` tree you do not use. `infra/gcp` provisions the API, its database, Redis,
+   secrets, the Auth service and the web container; `infra/azure` provisions the API side only, and
+   Keycloak is an existing server on both, so it is not deployed.
 6. **Docs.** Replace this `README.md`, fill in `src/frontend/DESIGN.md` before any UI work, and
    continue the ADR series at `0013` (or delete ours and start at `0001`).
 7. **Remove `.claude/` files you do not use**, and keep the hooks that protect secrets.

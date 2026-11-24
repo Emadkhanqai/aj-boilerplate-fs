@@ -385,8 +385,9 @@ step-by-step list is in the [1.0.0 changelog entry](../CHANGELOG.md#100--2026-11
 7. **Re-run the gate**, then sign in as a user with a role, one without, and one whose role you
    remove while they are signed in.
 
-Nothing in `infra/` deploys the Auth service or the web container, so if you use `embedded` that
-work is yours; see [what is not deployed](auth/setup.md#what-is-not-deployed).
+Only `infra/gcp` deploys the Auth service and the web container; on Azure, and for Keycloak anywhere,
+that work is yours. See [deploying](auth/setup.md#deploying-the-auth-service-and-the-web-gateway) and
+[what is not deployed](auth/setup.md#what-is-not-deployed).
 
 ---
 

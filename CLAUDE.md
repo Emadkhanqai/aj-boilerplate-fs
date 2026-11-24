@@ -50,8 +50,9 @@ It contains **no business domain**. Two modules ship, and they are not the same 
 5. **Docs** — replace `README.md`, fill in `src/frontend/DESIGN.md` before any UI work, and
    continue the ADR series at `0013` (keep ours as `0001`–`0012` history or delete them).
 6. **Infra** — pick your provider, set project/subscription variables, configure a remote
-   state backend, and delete the tree you are not using. `infra/` provisions the API, database,
-   Redis and secrets; deploying the web container, Auth service and Keycloak is yours.
+   state backend, and delete the tree you are not using. `infra/gcp` provisions the API, database,
+   Redis, secrets, the Auth service and the web container; `infra/azure` the API side only.
+   Keycloak is an existing external server on both and is never deployed.
 
 ## Stack
 

@@ -1,8 +1,8 @@
 # Infrastructure — Azure (Bicep)
 
 Provisions the API and everything it depends on. The GCP tree
-([`infra/gcp/`](../gcp/README.md)) provisions the same logical shape, so the application runs
-unchanged on either provider — see [ADR-0002](../../docs/adr/0002-dual-cloud-provider-behind-one-switch.md).
+([`infra/gcp/`](../gcp/README.md)) provisions the same logical shape for the API, so the application
+runs unchanged on either provider — see [ADR-0002](../../docs/adr/0002-dual-cloud-provider-behind-one-switch.md).
 
 | Resource | What it is for |
 |---|---|
@@ -18,14 +18,19 @@ unchanged on either provider — see [ADR-0002](../../docs/adr/0002-dual-cloud-p
 This is a boilerplate, not a platform. It is deliberately small enough to read in one sitting.
 Extend it; do not treat it as complete.
 
-> **What this tree does not deploy.** It provisions the **API** and what the API depends on. It does
-> not create the web container (nginx gateway), the Auth service (`AjBoilerplate.Auth`), the Auth
-> database, or Keycloak, and `.github/workflows/deploy.yml` rolls out only the API image (the `API_IMAGE` variable).
-> A project running `AUTH_PROVIDER=embedded` has to add those; a project inside the Al Jazeera USP
-> platform (`AUTH_PROVIDER=usp`) needs no Auth service. See
-> [docs/auth/setup.md](../../docs/auth/setup.md#what-is-not-deployed). Secrets the API reads are
-> loaded from the store at boot; the Auth service reads environment variables, so its platform
-> injects them.
+> **This tree deploys the API only.** It does not create the web container (the nginx gateway), the
+> Auth service (`AjBoilerplate.Auth`), the Auth database or Keycloak, and `deploy.yml` rolls out only
+> the API image (the `API_IMAGE` variable) on Azure. **Deploying the Auth service and the web container
+> through infrastructure as code is done on Google Cloud only**, by [`infra/gcp/`](../gcp/README.md);
+> the Bicep here has not been extended to match, and nothing in it deploys them. An Azure project
+> running `AUTH_PROVIDER=embedded` has to add those itself (Container Apps for both, the Auth
+> database, a migration step for it, and the gateway's two upstreams); a project inside the Al Jazeera
+> USP platform (`AUTH_PROVIDER=usp`) needs no Auth service. In either case Keycloak is an existing
+> external server and is not deployed here. See
+> [docs/auth/setup.md](../../docs/auth/setup.md#what-is-not-deployed). The Auth service reads
+> environment variables rather than loading secrets itself, so on Container Apps its secrets are
+> injected by Key Vault reference. The web image's `UPSTREAM_AUTH=cloud-run-id-token` mode is Google
+> Cloud specific and has no Azure counterpart; on Azure leave it at its default, `none`.
 
 ---
 
