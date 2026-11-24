@@ -1,10 +1,10 @@
 # Local container run of the built SPA. The app talks to the backend over the shared `app-net`
-# network, by container name (see nginx.conf's proxy_pass).
+# network, by container name (see docker/nginx/*.conf.template's proxy_pass).
 #
 # Create the network once per host: `docker network create app-net`.
 #
-# NEVER commit real client IDs, tenant names, or authority URLs here — supply them from your
-# own environment / secret store at deploy time. The values below are placeholders.
+# There are no identity-provider settings here: the browser never talks to one. Sign-in is the Auth
+# service's job (docs/auth/gateway-contract.md); this container only needs to know where it is.
 services:
   web:
     build: .
@@ -13,12 +13,14 @@ services:
     ports:
       - '8080:80'
     environment:
-      # `dev` renders the built-in role picker with no identity provider. Set to `oidc` and fill
-      # in the three OIDC values to authenticate against a real authority.
+      # `dev` renders the built-in role picker with NO sign-in and proxies /api/ ungated: local UI
+      # work only. `gateway` (the image default) is what every deployed environment runs.
       AUTH_MODE: dev
-      OIDC_CLIENT_ID: ''
-      OIDC_AUTHORITY: ''
-      OIDC_SCOPE: ''
+      # Who runs the gate when AUTH_MODE=gateway: `embedded` = this container, with the Auth service
+      # at AUTH_UPSTREAM; `usp` = USP's shared gateway in front, this container only serves files.
+      AUTH_PROVIDER: embedded
+      API_UPSTREAM: http://api:8080
+      AUTH_UPSTREAM: http://auth:8080
     networks:
       - app-net
 

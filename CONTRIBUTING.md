@@ -22,13 +22,16 @@ git clone https://github.com/<your-org>/aj-boilerplate-fs.git
 cd aj-boilerplate-fs
 
 cp .env.example .env          # then set MSSQL_SA_PASSWORD; nothing else is required
-docker compose up --build     # database + API + web, one command
+docker compose up --build     # database, Redis, Keycloak, Auth service, API and web: one command
 ```
 
 That brings up the whole stack: the web app on <http://localhost:4200>, the API on
-<http://localhost:8080> with its OpenAPI UI at `/swagger`, and SQL Server with the
-migrations already applied. `.env.example` documents every environment variable the
-repository reads and what each is for.
+<http://localhost:8080> with its OpenAPI UI at `/swagger` (protected endpoints need a session),
+SQL Server with the migrations already applied, and a local Keycloak that stands in for Microsoft
+Entra ID, so you can sign in as `admin`, `editor`, `viewer` or `noaccess` with no tenant (see the
+[README](README.md#quickstart-about-5-minutes)). `.env.example` documents every environment variable
+the repository reads and what each is for. If something does not start, see
+[docs/auth/troubleshooting.md](docs/auth/troubleshooting.md).
 
 Working on one stack only? The per-stack instructions are in
 [src/backend/README.md](src/backend/README.md) and
@@ -236,7 +239,7 @@ change how every future change is made, in three repositories.
 - **Every hook that blocks needs a documented opt-out** with a name matching the existing
   ones (`SONAR_GATE_SKIP`, `COMMIT_MSG_SKIP`), and the opt-out must be loud when used. A
   gate with no escape hatch gets disabled wholesale the first time it is wrong.
-- **Document it in `.env.example` section 10 and in the table above** in the same pull
+- **Document it in `.env.example` (the local developer tooling section) and in the table above** in the same pull
   request.
 - **Never edit `.claude/settings.json`'s `extraKnownMarketplaces` or `enabledPlugins`**
   as a side effect of another change.
@@ -280,6 +283,18 @@ scripts/derive.sh --write --clean    # produce both trees under dist/derive/
 
 It prints the manual steps it cannot do. Do them, review the whole diff against each
 published repository, then push deliberately.
+
+What the derivation decides for you, so you do not re-decide it in a derived repository:
+
+- **One OpenAPI document**, `docs/api/openapi.json`, written by `src/backend/scripts/generate-openapi.sh`
+  and shipped to both derived repositories at the same path. The frontend keeps no copy:
+  `src/frontend/scripts/generate-api.mjs` and the `UserProfile` contract spec look the document up,
+  so the same files work in `fs` and in `fe`.
+- **One `.env.example`**, at the root, with `# @derive keep=fs,be` blocks. `be` gets the API and Auth
+  service keys, `fe` the web runtime keys. Edit the root file, never a derived one.
+- **Markdown links** are re-pointed per repository: to where the target lands, or, for the other
+  stack and for files that do not ship (`scripts/derive.sh`), to GitHub in `aj-boilerplate-fs`.
+- **`scripts/derive.sh` and `scripts/derive-links.py` do not ship**; they only run in this tree.
 
 The release and tagging convention is in [CHANGELOG.md](CHANGELOG.md). The background is
 [ADR-0006](docs/adr/0006-three-repository-split.md) and

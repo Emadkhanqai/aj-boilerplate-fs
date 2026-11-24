@@ -116,3 +116,64 @@ public sealed class FakeItemRepository : IItemRepository
     private static void StampRowVersion(Item item) =>
         RowVersionProperty.SetValue(item, BitConverter.GetBytes(Interlocked.Increment(ref _tokenSequence)));
 }
+
+/// <summary>An in-memory <see cref="AjBoilerplate.Application.AuthenticationHistory.IAuthenticationEventRepository"/>
+/// that can be told the session already exists, or to fail outright. The mapping from SQL error
+/// 2601/2627 to "already exists" needs a real SQL Server and is proved in the integration suite.</summary>
+public sealed class FakeAuthenticationEventRepository : AjBoilerplate.Application.AuthenticationHistory.IAuthenticationEventRepository
+{
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Saved { get; } = [];
+
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Attempted { get; } = [];
+
+    /// <summary>When true, every add reports the session as already recorded.</summary>
+    public bool AlreadyExists { get; set; }
+
+    public Exception? Failure { get; set; }
+
+    public Task<bool> TryAddAsync(AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent authenticationEvent, CancellationToken cancellationToken)
+    {
+        Attempted.Add(authenticationEvent);
+        if (Failure is not null)
+        {
+            return Task.FromException<bool>(Failure);
+        }
+
+        if (AlreadyExists)
+        {
+            return Task.FromResult(false);
+        }
+
+        Saved.Add(authenticationEvent);
+        return Task.FromResult(true);
+    }
+
+    /// <summary>What <see cref="ListAsync"/> returns, and the filter it was last asked with.</summary>
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Listed { get; } = [];
+
+    public AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryFilter? LastFilter { get; private set; }
+
+    public Task<(IReadOnlyList<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Items, int Total)> ListAsync(
+        AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryFilter filter, CancellationToken cancellationToken)
+    {
+        LastFilter = filter;
+        return Task.FromResult<(IReadOnlyList<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent>, int)>(([.. Listed], Listed.Count));
+    }
+
+    public Task<IReadOnlyList<AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryUser>> UsersAsync(
+        CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<AjBoilerplate.Application.AuthenticationHistory.AuthenticationHistoryUser>>([]);
+
+    /// <summary>What <see cref="EndAsync"/> answers, and the calls it received.</summary>
+    public AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite EndResult { get; set; } =
+        AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite.Ended;
+
+    public List<(string SessionId, Guid EventId, string Reason, string? Detail, DateTimeOffset EndedAt)> Ends { get; } = [];
+
+    public Task<AjBoilerplate.Application.AuthenticationHistory.SessionEndWrite> EndAsync(
+        string sessionId, Guid eventId, string reason, string? reasonDetail, DateTimeOffset endedAt, CancellationToken cancellationToken)
+    {
+        Ends.Add((sessionId, eventId, reason, reasonDetail, endedAt));
+        return Task.FromResult(EndResult);
+    }
+}

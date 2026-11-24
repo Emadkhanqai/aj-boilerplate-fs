@@ -1,0 +1,299 @@
+# nginx profile: AUTH_PROVIDER=embedded — the web container IS the auth gateway.
+#
+# Rendered by the official image's envsubst step (only ${API_UPSTREAM} and ${AUTH_UPSTREAM} are
+# substituted; see NGINX_ENVSUBST_FILTER in the Dockerfile). This file lives in the `http` context
+# of the image's own nginx.conf. The contract it implements is docs/auth/gateway-contract.md, section
+# "nginx (web container)"; header names are USP's on purpose (`X-Usp-*`).
+#
+# THE MODEL. The browser holds one opaque HttpOnly session cookie and no token. For every gated
+# request nginx asks the Auth service (`auth_request` -> /auth/validate), takes the Keycloak JWT
+# from the answer and forwards the request to the API as `Authorization: Bearer <jwt>`.
+
+server_tokens off;
+
+# A navigation is what a browser sends when somebody types or clicks a URL; fetch/XHR is not. It is
+# what decides between "302 to the login page" and "just say 401". Older browsers send no Fetch
+# Metadata, so they fall back to whether the request accepts HTML.
+map $http_accept $accepts_html {
+    default        0;
+    "~*text/html"  1;
+}
+map $http_sec_fetch_mode $is_navigation {
+    default   0;
+    navigate  1;
+    ""        $accepts_html;
+}
+
+# The path the CLIENT asked for, WITHOUT its query string, so a search term or a `?code=` never
+# reaches a log. It is taken from `$request_uri`, not `$uri`: `$uri` is rewritten by `try_files`, so
+# a request for /login would be logged as /index.html. Going through a map keeps redaction of a
+# path-embedded identifier a one-line change here rather than an edit of the log format.
+map $request_uri $safe_uri {
+    default             $request_uri;
+    "~^(?<path_only>[^?]*)"  $path_only;
+}
+
+# Never log Authorization, X-Auth-Jwt or a Cookie: under this design a logged one is a leaked credential.
+log_format gateway escape=json '{"time":"$time_iso8601","rid":"$request_id","method":"$request_method",'
+    '"uri":"$safe_uri","status":$status,"upstream_status":"$upstream_status",'
+    '"bytes":$body_bytes_sent,"duration":$request_time,"ua":"$http_user_agent","client":"$remote_addr"}';
+
+# Behind a TLS-terminating load balancer the hop to this container is plain http; keep the scheme the
+# CLIENT used so the Auth service builds https redirect URLs and Secure cookies.
+map $http_x_forwarded_proto $forwarded_proto {
+    default  $http_x_forwarded_proto;
+    ""       $scheme;
+}
+
+# The two rate limits are separate zones on purpose: the SPA polls /auth/roles-version every 15 s per
+# tab, and that must not eat the budget for sign-in traffic. NOTE: the key is the peer address, so
+# behind a load balancer every user shares the balancer's bucket. Configure `set_real_ip_from` /
+# `real_ip_header` for YOUR balancer's address range before relying on these (see docs/auth/setup.md).
+map $uri $auth_signin_key {
+    /auth/roles-version  "";
+    default              $binary_remote_addr;
+}
+map $uri $auth_roles_version_key {
+    /auth/roles-version  $binary_remote_addr;
+    default              "";
+}
+limit_req_zone $auth_signin_key zone=auth_signin:10m rate=10r/s;
+limit_req_zone $auth_roles_version_key zone=auth_roles_version:10m rate=150r/s;
+limit_req_status 429;
+
+# How the three upstream hops are reached (proxy_pass, Host, and for Cloud Run an ID token). One of
+# two variants (docker/nginx/upstream/none or /cloud-run) is rendered into conf.d/upstream/ at start
+# by 16-nginx-profile.sh, chosen by UPSTREAM_AUTH.
+include /etc/nginx/conf.d/upstream/http.conf;
+
+server {
+    listen 80;
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The image's nginx.conf already logs to /var/log/nginx/access.log (stdout) in a format that
+    # includes the query string. A directive here REPLACES it, so only this one runs.
+    access_log /dev/stdout gateway;
+    error_log /dev/stderr warn;
+    absolute_redirect off;
+
+    include /etc/nginx/snippets/security-headers.conf;
+
+    include /etc/nginx/conf.d/upstream/server.conf;
+
+    # ---- Ungated: liveness, and the config the app reads before it can know anything -----------
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    # Rewritten per container start (docker/40-env.sh) and requested without a cache-buster, so a
+    # cached copy would carry a previous deployment's auth mode.
+    location = /env.js {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # ---- Internal: the one call that decides everything ----------------------------------------
+    location = /_auth_validate {
+        internal;
+        include /etc/nginx/conf.d/upstream/validate.conf;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Request-Id $request_id;
+        # The session cookie is the ONLY thing the Auth service needs from the browser.
+        proxy_set_header Cookie $http_cookie;
+        proxy_set_header Authorization "";
+        # The JWT in X-Auth-Jwt is larger than nginx's 4k default header buffer; without this the
+        # subrequest dies with "upstream sent too big header" and the user sees a 500.
+        proxy_buffer_size 8k;
+    }
+
+    # ---- The Auth service, as seen by browsers -------------------------------------------------
+    # /auth/validate is for nginx only, and /auth/events (an event-push surface some Auth services
+    # expose) is not a browser surface either. The regex tolerates repeated slashes and any case, and
+    # has no end anchor, so `/auth/Validate`, `//auth//validate` and `/auth/validate.js` are all
+    # refused here instead of being routed by the Auth service's own (case-insensitive) matching.
+    location ~* ^/auth/+(?:validate|events) {
+        return 404;
+    }
+
+    # /internal/ is the Auth service's trusted-caller surface (admin refresh with an API key).
+    location ^~ /internal/ {
+        return 404;
+    }
+
+    # The hand-off page is a document the Auth service builds with its OWN Content-Security-Policy (an allow-listed hash for its one
+    # inline auto-submit script, and no `form-action`, so the cross-origin POST to the target portal's redeem URL is permitted).
+    # The gateway CSP (`script-src 'self'`, `form-action 'self'`) would block both, and two CSP headers are enforced TOGETHER, so
+    # here the upstream's is the ONLY one: every other security header is still added, the CSP is not.
+    location = /auth/handoff {
+        limit_req zone=auth_signin burst=30 nodelay;
+        include /etc/nginx/snippets/security-headers-no-csp.conf;
+        proxy_hide_header X-Auth-Jwt;
+        include /etc/nginx/conf.d/upstream/auth.conf;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    location /auth/ {
+        limit_req zone=auth_signin burst=30 nodelay;
+        limit_req zone=auth_roles_version burst=300 nodelay;
+        include /etc/nginx/snippets/security-headers.conf;
+        # The JWT must never reach a browser, whatever the Auth service does.
+        proxy_hide_header X-Auth-Jwt;
+        include /etc/nginx/conf.d/upstream/auth.conf;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
+    # ---- Gated: the API ------------------------------------------------------------------------
+    location /api/ {
+        auth_request /_auth_validate;
+        # Captured here because `auth_request_set` runs before the status is acted on, and
+        # @forbidden needs X-Usp-Access after the subrequest is gone.
+        auth_request_set $jwt $upstream_http_x_auth_jwt;
+        auth_request_set $usp_access $upstream_http_x_usp_access;
+        auth_request_set $usp_session_id $upstream_http_x_usp_session_id;
+        auth_request_set $usp_session_started_at $upstream_http_x_usp_session_started_at;
+
+        error_page 401 = @unauthorized;
+        error_page 403 = @forbidden;
+        error_page 500 502 503 504 = @unavailable;
+
+        include /etc/nginx/snippets/security-headers.conf;
+        # Only the gateway may say "revoked"; an upstream that sends it is ignored. And the JWT
+        # is for the API, never for a browser, whatever the API echoes back.
+        proxy_hide_header X-Usp-Access;
+        proxy_hide_header X-Auth-Jwt;
+
+        include /etc/nginx/conf.d/upstream/api.conf;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Request-Id $request_id;
+        # `proxy_set_header` REPLACES whatever the client sent, so none of these can be forged from
+        # a browser. The cookie is blanked: the API authenticates by the JWT and must never see (or
+        # log) the session id.
+        proxy_set_header Authorization "Bearer $jwt";
+        proxy_set_header X-Usp-Session-Id $usp_session_id;
+        proxy_set_header X-Usp-Session-Started-At $usp_session_started_at;
+        proxy_set_header Cookie "";
+    }
+
+    # ---- Ungated: what the sign-in and signed-out screens need to render ------------------------
+    # Static assets. The login page is the SPA, and it needs its own scripts and styles BEFORE there
+    # is a session, so gating these would answer the login page's `main.js` with a redirect to the
+    # login page. They are public code with hashed names, not data. `=404` rather than the SPA
+    # fallback: a missing `.js` must be a 404, not an HTML document that fails as a syntax error.
+    #
+    # The negative lookahead is load-bearing: a regex location outranks a plain prefix location, so
+    # without it `/api/v1/files/logo.png` would be answered from disk here and never reach the
+    # gated `/api/` proxy.
+    location ~* ^(?!/(?:api|auth)/).+\.(?:js|mjs|css|map|woff2?|ttf|otf|eot|ico|png|jpe?g|gif|svg|webp|txt)$ {
+        include /etc/nginx/snippets/security-headers.conf;
+        try_files $uri =404;
+    }
+
+    location ^~ /media/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        try_files $uri =404;
+    }
+
+    # The SPA document, ungated: `/login` must load without a session, and `/index.html` is what the
+    # gated `location /` falls back to. It is the same public file either way.
+    location = /login {
+        include /etc/nginx/snippets/security-headers.conf;
+        include /etc/nginx/snippets/csp-nonce-document.conf;
+        try_files /index.html =404;
+    }
+
+    location = /index.html {
+        include /etc/nginx/snippets/security-headers.conf;
+        include /etc/nginx/snippets/csp-nonce-document.conf;
+    }
+
+    location = /_gw/pages.css {
+        include /etc/nginx/snippets/security-headers.conf;
+        alias /usr/share/nginx/gateway/gateway-pages.css;
+    }
+
+    # After POST /auth/logout the Auth service answers `303 /logged-out`. This page is ungated, or it
+    # would bounce to /auth/login and SSO would sign the user straight back in. It NEVER navigates by
+    # itself: the only way out is a click on a link the user chooses to press.
+    location = /logged-out {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        default_type text/html;
+        return 200 '<!doctype html><html lang="en"><meta charset="utf-8"><title>Signed out</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/_gw/pages.css"><body><main><h1>You have been signed out</h1><p class="sub">Your session on this application has ended. Close this window, or sign in again.</p><a class="cta" href="/auth/login?prompt=login">Sign in again</a><p class="ref">Reference: $request_id</p></main></body></html>';
+    }
+
+    # ---- Gated: the app shell ------------------------------------------------------------------
+    location / {
+        auth_request /_auth_validate;
+        auth_request_set $usp_access $upstream_http_x_usp_access;
+
+        error_page 401 = @unauthorized;
+        error_page 403 = @forbidden;
+        error_page 500 502 503 504 = @unavailable;
+
+        include /etc/nginx/snippets/security-headers.conf;
+        # Not the document itself: the fallback below is an internal redirect to `= /index.html`,
+        # which stamps the nonce.
+        try_files $uri /index.html;
+    }
+
+    # ---- What each failure becomes -------------------------------------------------------------
+    #   401  navigation -> 302 /login?from=<path>      XHR -> 401 passed through
+    #   403  navigation -> "No access" page            XHR -> 403 passed through (+ X-Usp-Access)
+    #   5xx from validate  -> "Unavailable" page       XHR -> 503
+    # Only a 401 may become a login redirect: a 403 is a verdict and a 5xx an outage, and redirecting
+    # either would start a sign-in that cannot fix it.
+    location @unauthorized {
+        internal;
+        if ($is_navigation) {
+            return 302 "/login?from=$request_uri";
+        }
+        default_type application/json;
+        return 401 '{"error":"unauthenticated"}';
+    }
+
+    location @forbidden {
+        internal;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header X-Request-Id $request_id always;
+        # `revoked` is how the SPA tells "your access was removed" from an ordinary "not allowed".
+        add_header X-Usp-Access $usp_access always;
+        add_header Cache-Control "no-store" always;
+        if ($is_navigation = 0) {
+            return 403 '{"error":"forbidden"}';
+        }
+        default_type text/html;
+        return 403 '<!doctype html><html lang="en"><meta charset="utf-8"><title>No access</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/_gw/pages.css"><body><main><h1>You have no access</h1><p class="sub">You are signed in, but you have no role in this application. Contact your administrator.</p><form method="post" action="/auth/logout?next=sign-in"><button class="cta" type="submit">Back to sign-in</button></form><p class="ref">Reference: $request_id</p></main></body></html>';
+    }
+
+    location @unavailable {
+        internal;
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header X-Usp-Failure "auth" always;
+        add_header X-Request-Id $request_id always;
+        add_header Cache-Control "no-store" always;
+        if ($is_navigation = 0) {
+            return 503 '{"error":"unavailable"}';
+        }
+        default_type text/html;
+        return 503 '<!doctype html><html lang="en"><meta charset="utf-8"><title>Temporarily unavailable</title><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/_gw/pages.css"><body><main><h1>Temporarily unavailable</h1><p class="sub">Sign-in is temporarily unavailable. This is a fault on our side, not a problem with your account. Please try again in a few minutes.</p><p class="sub">Your session has not been ended and there is nothing you need to change.</p><p class="ref">Reference: $request_id</p></main></body></html>';
+    }
+}

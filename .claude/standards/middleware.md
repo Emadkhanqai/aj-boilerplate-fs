@@ -24,10 +24,13 @@ This is the exact `Program.cs` order. Do not reshuffle without a reviewed reason
 8. **Routing** (`UseRouting`) — must precede CORS, rate limiting, and auth so endpoint
    metadata is available.
 9. **CORS.**
-10. **Rate limiting** — global + endpoint-specific policies (after routing).
-11. **Request timeouts.**
-12. **Authentication.**
-13. **Authorization.**
+10. **Request timeouts.**
+11. **Authentication.**
+12. **Rate limiting** — global + endpoint-specific policies. **After authentication**, so the limiter
+    can partition on the user's subject: before it, every caller behind the gateway shares the
+    proxy's address and one bucket.
+13. **Authorization**, then the **sign-in recording** and **idempotency** middleware (both need the
+    caller resolved).
 14. **Anti-CSRF** — only if cookie-based auth is used.
 15. **Validation filters** — action/endpoint filters returning the standard envelope.
 16. **Output caching** — safe GET endpoints only.
@@ -102,9 +105,12 @@ applicable, and `Strict-Transport-Security` (non-Development). Strip the `Server
 
 ## 11. Anti-CSRF
 
-- **Required if cookie-based auth is used.** Not required for pure bearer-token APIs — but the
-  decision is recorded here. The boilerplate ships **bearer tokens**, so CSRF middleware is
-  **off**. Introducing any auth cookie flips this on; that is an ADR-worthy change.
+- **Required if the API itself authenticates by cookie.** It does not. The API accepts only the
+  `Authorization: Bearer` JWT; nginx blanks the `Cookie` header on `/api/` and the API never reads
+  it, so antiforgery middleware is **off**. A session cookie does exist, but it belongs to the Auth
+  service: `SameSite=Lax`, `HttpOnly`, and its one state-changing endpoint (`POST /auth/logout`)
+  checks `Origin` or `Sec-Fetch-Site`. That decision is [ADR-0012](../../docs/adr/0012-gateway-session-auth.md).
+  Making the API read a cookie would flip this rule on and needs a new ADR.
 
 ## 12. Authentication + authorization middleware
 

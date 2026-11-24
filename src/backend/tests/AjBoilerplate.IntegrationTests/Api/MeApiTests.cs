@@ -10,8 +10,8 @@ using AjBoilerplate.IntegrationTests.Support;
 namespace AjBoilerplate.IntegrationTests.Api;
 
 /// <summary>
-/// End-to-end coverage of <c>GET /api/v1/me</c> — the endpoint the frontend's OIDC provider calls to
-/// learn what the signed-in user may do (<c>libs/auth/src/lib/providers/oidc-provider.ts</c>).
+/// End-to-end coverage of <c>GET /api/v1/me</c> — the endpoint the frontend's gateway provider calls to
+/// learn what the signed-in user may do (<c>libs/auth/src/lib/providers/gateway-provider.ts</c>).
 ///
 /// The shape assertions here are deliberately made against the RAW JSON as well as the typed DTO.
 /// The frontend consumes this through `envelopeInterceptor`, which unwraps `data` and hands the
@@ -116,7 +116,7 @@ public sealed class MeApiTests
     [Fact]
     public async Task The_wire_shape_is_exactly_what_the_frontend_parses()
     {
-        // `oidc-provider.ts` types this call as `UserProfile` and relies on `envelopeInterceptor`
+        // `gateway-provider.ts` types this call as `UserProfile` and relies on `envelopeInterceptor`
         // returning `body.data`. So the contract is: an ApiResponse envelope whose `data` carries
         // camelCase `userId`/`displayName`/`email`/`roles`/`capabilities`, with the five capability
         // flags named exactly as `Capabilities` in `libs/auth/src/lib/roles.ts` declares them.
@@ -136,6 +136,8 @@ public sealed class MeApiTests
         Assert.Equal("Test User", data.GetProperty("displayName").GetString());
         Assert.Equal(JsonValueKind.String, data.GetProperty("email").ValueKind);
         Assert.Equal(JsonValueKind.Array, data.GetProperty("roles").ValueKind);
+        // Permissions sit beside the capability flags, as a string array — never inside `roles`.
+        Assert.Equal(JsonValueKind.Array, data.GetProperty("permissions").ValueKind);
 
         var capabilities = data.GetProperty("capabilities");
         foreach (var flag in new[] { "canView", "canCreate", "canEdit", "canDelete", "canAdminister" })

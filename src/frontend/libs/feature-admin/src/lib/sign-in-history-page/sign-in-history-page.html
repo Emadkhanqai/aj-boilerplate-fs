@@ -1,0 +1,111 @@
+<div class="page-head">
+  <div>
+    <h2>Sign-in history</h2>
+    <p class="sub">Every sign-in session, who it was, how it ended and how long it lasted. Times are UTC.</p>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="filter-bar">
+    <div class="field">
+      <label for="history-user">User</label>
+      <p-select
+        inputId="history-user"
+        [options]="userOptions()"
+        optionLabel="label"
+        optionValue="value"
+        placeholder="Everyone"
+        [showClear]="true"
+        [filter]="true"
+        filterBy="label"
+        appendTo="body"
+        data-testid="history-user"
+        [ngModel]="userId()"
+        (ngModelChange)="setUser($event)"
+      />
+    </div>
+    <div class="field">
+      <label for="history-range">Signed in between</label>
+      <p-datepicker
+        inputId="history-range"
+        selectionMode="range"
+        [readonlyInput]="true"
+        [showClear]="true"
+        dateFormat="dd M yy"
+        placeholder="Any date"
+        appendTo="body"
+        data-testid="history-range"
+        [ngModel]="range()"
+        (ngModelChange)="setRange($event)"
+      />
+    </div>
+  </div>
+
+  @if (historyQuery.isError()) {
+    <div class="error-block" role="alert">
+      <strong>We couldn't load the sign-in history.</strong>
+      <p>{{ errorText() }}</p>
+      <div class="form-actions">
+        <p-button label="Try again" icon="pi pi-refresh" severity="secondary" (onClick)="retry()" />
+      </div>
+    </div>
+  } @else if (!historyQuery.isPending() && rows().length === 0) {
+    <div class="panel-body">
+      <app-empty-state heading="No sign-ins match" message="Widen the date range or choose another user." />
+    </div>
+  } @else {
+    <div class="scroll">
+      <p-table
+        [value]="rows()"
+        [lazy]="true"
+        [paginator]="true"
+        [rows]="pageSize()"
+        [totalRecords]="total()"
+        [first]="(page() - 1) * pageSize()"
+        [rowsPerPageOptions]="pageSizeOptions"
+        [showCurrentPageReport]="true"
+        [currentPageReportTemplate]="pageReport"
+        [sortField]="sortBy()"
+        [sortOrder]="sortDir() === 'asc' ? 1 : -1"
+        [loading]="historyQuery.isPending()"
+        [showLoader]="true"
+        dataKey="id"
+        styleClass="p-datatable-sm"
+        (onLazyLoad)="onLazyLoad($event)"
+      >
+        <ng-template pTemplate="header">
+          <tr>
+            <th scope="col" pSortableColumn="user">User <p-sortIcon field="user" /></th>
+            <th scope="col" pSortableColumn="signedIn">Signed in <p-sortIcon field="signedIn" /></th>
+            <th scope="col" pSortableColumn="sessionEnded">Ended <p-sortIcon field="sessionEnded" /></th>
+            <th scope="col" pSortableColumn="duration">Duration <p-sortIcon field="duration" /></th>
+            <th scope="col" pSortableColumn="result">Result <p-sortIcon field="result" /></th>
+            <th scope="col" pSortableColumn="endReason">How it ended <p-sortIcon field="endReason" /></th>
+          </tr>
+        </ng-template>
+        <ng-template pTemplate="body" let-s>
+          <tr data-testid="history-row">
+            <td>{{ s.userDisplayName || s.userId || '—' }}</td>
+            <td>{{ when(s.signedInAtUtc) }}</td>
+            <td>
+              @if (s.endedAtUtc) {
+                {{ when(s.endedAtUtc) }}
+              } @else {
+                <span class="status s-approved">Active</span>
+              }
+            </td>
+            <td class="tabular">{{ duration(s) }}</td>
+            <td>
+              @if (s.result) {
+                <span class="status" [class]="s.result === 'Failure' ? 's-rejected' : 's-approved'">{{ s.result }}</span>
+              } @else {
+                —
+              }
+            </td>
+            <td>{{ reason(s) }}</td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </div>
+  }
+</section>

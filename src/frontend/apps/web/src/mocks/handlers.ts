@@ -7,6 +7,7 @@ import type {
   PagedResponse,
   UpdateItemRequest,
 } from '@aj-boilerplate/data-access/api-types';
+import { adminHandlers } from './admin-handlers';
 import type { FeatureAnnouncement } from '@aj-boilerplate/data-access/api-client';
 
 /**
@@ -130,6 +131,7 @@ interface AcknowledgeFeaturesRequest {
 }
 
 export const handlers = [
+  ...adminHandlers,
   http.get('/api/v1/items', async ({ request }) => {
     await delay(LATENCY_MS);
     const url = new URL(request.url);

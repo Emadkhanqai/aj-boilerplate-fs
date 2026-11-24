@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, OnInit, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
-import { AuthService } from '@aj-boilerplate/auth';
+import { AuthService, highestRole } from '@aj-boilerplate/auth';
 import { DocumentTitleService } from '@aj-boilerplate/shared/util';
 
 /**
@@ -52,7 +52,7 @@ export class HomePageComponent implements OnInit {
   }
 
   protected role(): string {
-    return this.auth.roles()[0] ?? 'no role';
+    return highestRole(this.auth.roles()) ?? 'no role';
   }
 
   ngOnInit(): void {

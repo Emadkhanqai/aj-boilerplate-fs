@@ -143,6 +143,11 @@ repository, however they may look in a scanner report:
 - **The deliberately unconfigured placeholders** — empty authority URLs, blank secret values in
   `appsettings.json`, unset repository variables. They are empty because a value there would be
   either fake or dangerous, and no value can be right for every consumer.
+- **The dev-only credentials in the local sign-in stack.** `docker-compose.yml` and
+  `infra/keycloak/realm-aj-boilerplate.json` carry committed, clearly named throwaway values (for
+  example the seeded users' password and the local client secrets) so that `docker compose up` works
+  with no setup. They protect nothing real: they exist only inside a local container. Any value in
+  a **deployed** environment is a different matter and a finding if committed.
 - **Missing rate limits, WAF rules, or DDoS protection on a service nobody has deployed.** These
   are properties of a deployment, not of source code.
 - **Anything in `infra/` that is expected to be configured before the first `apply`.** Those

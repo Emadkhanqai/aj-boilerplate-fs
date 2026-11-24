@@ -58,6 +58,7 @@ public sealed class MeController : ControllerBase
                 profile.Capabilities.CanCreate,
                 profile.Capabilities.CanEdit,
                 profile.Capabilities.CanDelete,
-                profile.Capabilities.CanAdminister)));
+                profile.Capabilities.CanAdminister),
+            profile.Permissions));
     }
 }

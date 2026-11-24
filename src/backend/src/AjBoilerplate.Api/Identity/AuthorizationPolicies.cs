@@ -18,4 +18,8 @@ public static class Policies
 
     /// <summary>Administrative surfaces (operational dashboards, configuration). Narrowest.</summary>
     public const string AdminAccess = "AdminAccess";
+
+    /// <summary>The Auth service's machine calls (<c>/api/integration/auth-backend/*</c>). Satisfied only by the
+    /// fixed service principal one of its two schemes produces — never by a person, whatever their role.</summary>
+    public const string AuthBackendServiceAccess = "AuthBackendServiceAccess";
 }

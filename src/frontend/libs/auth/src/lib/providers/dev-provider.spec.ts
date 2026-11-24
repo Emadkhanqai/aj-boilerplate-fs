@@ -19,6 +19,13 @@ describe('devProvider', () => {
     expect(createDevProvider().restore()?.user.userId).toBe(DEV_USERS[0]?.userId);
   });
 
+  it('holds no token: the persisted session carries only identity and roles', async () => {
+    await createDevProvider().signIn(DEV_USERS[0]?.userId);
+
+    const stored = JSON.parse(window.localStorage.getItem(DEV_SESSION_STORAGE_KEY) ?? '{}') as Record<string, unknown>;
+    expect(Object.keys(stored).sort()).toEqual(['roles', 'user']);
+  });
+
   it('rejects an unknown user id', async () => {
     await expect(createDevProvider().signIn('nobody')).rejects.toThrow(/Unknown dev user/);
   });
@@ -37,7 +44,6 @@ describe('devProvider', () => {
       JSON.stringify({
         user: { userId: 'x', name: 'X', email: 'x@example.com' },
         roles: ['superuser'],
-        accessToken: 'dev.x',
       }),
     );
 

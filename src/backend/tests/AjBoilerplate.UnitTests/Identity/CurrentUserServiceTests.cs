@@ -98,6 +98,29 @@ public sealed class CurrentUserServiceTests
         Assert.Throws<ForbiddenException>(() => service.GetProfile());
     }
 
+    [Fact]
+    public void A_permission_alone_grants_its_capability_and_is_reported_beside_the_flags_not_as_a_role()
+    {
+        var profile = new CurrentUserService(
+            new StubActorClaims("oid-42", [], [Permissions.ItemsWrite])).GetProfile();
+
+        Assert.Empty(profile.Roles);
+        Assert.Equal([Permissions.ItemsWrite], profile.Permissions);
+        Assert.True(profile.Capabilities.CanCreate);
+        Assert.False(profile.Capabilities.CanAdminister);
+    }
+
+    [Fact]
+    public void An_unknown_permission_is_not_reported_and_grants_nothing()
+    {
+        var profile = new CurrentUserService(
+            new StubActorClaims("oid-42", [], ["items:delete", "ITEMS:READ", Permissions.ItemsRead])).GetProfile();
+
+        Assert.Equal([Permissions.ItemsRead], profile.Permissions);
+        Assert.True(profile.Capabilities.CanView);
+        Assert.False(profile.Capabilities.CanEdit);
+    }
+
     private static UserProfileDto ProfileFor(params string[] roles) =>
         new CurrentUserService(new StubActorClaims("oid-42", roles)).GetProfile();
 
@@ -109,10 +132,11 @@ public sealed class CurrentUserServiceTests
     /// </summary>
     private sealed class StubActorClaims : IActorClaims
     {
-        public StubActorClaims(string id, IReadOnlyList<string> roles)
+        public StubActorClaims(string id, IReadOnlyList<string> roles, IReadOnlyList<string>? permissions = null)
         {
             Id = id;
             Roles = roles;
+            Permissions = permissions ?? [];
         }
 
         public string Id { get; }
@@ -124,6 +148,8 @@ public sealed class CurrentUserServiceTests
         public string Email => "test.user@example.com";
 
         public IReadOnlyList<string> Roles { get; }
+
+        public IReadOnlyList<string> Permissions { get; }
 
         public IReadOnlyList<string> Groups => [];
     }

@@ -13,6 +13,25 @@ public sealed record RoleCapabilities(bool CanRead, bool CanWrite, bool CanAdmin
 {
     private static readonly RoleCapabilities None = new(CanRead: false, CanWrite: false, CanAdminister: false);
 
+    /// <summary>
+    /// The seat's capabilities unioned with the caller's <paramref name="permissions"/>: a seat OR the
+    /// matching permission grants each capability. The ReadAccess/WriteAccess/AdminAccess policies and
+    /// <c>/api/v1/me</c> both call this, so the server's decision and the client's flags cannot drift.
+    /// </summary>
+    public static RoleCapabilities For(IEnumerable<string> roles, IEnumerable<string> permissions)
+    {
+        var seat = For(roles);
+        var held = permissions
+            .Select(Identity.Permissions.Canonical)
+            .Where(permission => permission is not null)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return new RoleCapabilities(
+            CanRead: seat.CanRead || held.Contains(Identity.Permissions.ItemsRead),
+            CanWrite: seat.CanWrite || held.Contains(Identity.Permissions.ItemsWrite),
+            CanAdminister: seat.CanAdminister || held.Contains(Identity.Permissions.AdminManage));
+    }
+
     /// <summary>The capabilities granted by <paramref name="roles"/>. Unrecognised roles grant
     /// nothing — this fails closed.</summary>
     public static RoleCapabilities For(IEnumerable<string> roles) => ApplicationRoles.Effective(roles) switch

@@ -5,20 +5,22 @@ import { AppLayoutComponent } from '@aj-boilerplate/shell';
 import { LoginPageComponent } from './pages/login-page/login-page';
 import { NotFoundPageComponent } from './pages/not-found-page/not-found-page';
 import { AccessDeniedPageComponent } from './pages/access-denied-page/access-denied-page';
-import { AuthCallbackPageComponent } from './pages/auth-callback-page/auth-callback-page';
+import { AccessCheckUnavailablePageComponent } from './pages/access-check-unavailable-page/access-check-unavailable-page';
 import { SigningOutPageComponent } from './pages/signing-out-page/signing-out-page';
 import { HomePageComponent } from './pages/home-page/home-page';
 
 export const appRoutes: Routes = [
   // ---- Public routes: rendered OUTSIDE the authenticated shell. ----
   { path: 'login', component: LoginPageComponent },
-  // OIDC redirect target — completes the Authorization Code + PKCE exchange (oidc-provider.ts).
-  { path: 'auth/callback', component: AuthCallbackPageComponent },
+  // There is deliberately NO `/auth/callback` route: the Auth service owns that path, and nginx
+  // proxies `/auth/` to it, so the SPA never sees the identity provider's redirect.
   // Full-screen "Signing out…" blocker — runs auth.signOut() itself, then routes on to /login (or
   // the identity provider redirects the whole document away first). Public: it clears the session.
   { path: 'signing-out', component: SigningOutPageComponent },
   // Reached via capabilityGuard's redirect; also directly linkable/bookmarkable.
   { path: 'access-denied', component: AccessDeniedPageComponent },
+  // Reached when `/api/v1/me` could not be read for a reason that is NOT the server's verdict.
+  { path: 'access-check-unavailable', component: AccessCheckUnavailablePageComponent },
 
   // ---- Authenticated app: guarded, then wrapped in the shell. ----
   {
@@ -52,6 +54,18 @@ export const appRoutes: Routes = [
         canDeactivate: [unsavedChangesGuard],
       },
       // ---- end sample feature ----
+
+      // ---- Administration (libs/feature-admin): behind the admin capability. ----
+      {
+        path: 'admin/users',
+        loadComponent: () => import('@aj-boilerplate/feature-admin').then((m) => m.UsersPageComponent),
+        canActivate: [capabilityGuard('canAdminister')],
+      },
+      {
+        path: 'admin/sign-in-history',
+        loadComponent: () => import('@aj-boilerplate/feature-admin').then((m) => m.SignInHistoryPageComponent),
+        canActivate: [capabilityGuard('canAdminister')],
+      },
     ],
   },
 

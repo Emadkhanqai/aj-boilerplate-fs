@@ -1,14 +1,23 @@
 import { Component, ChangeDetectionStrategy, OnInit, inject, signal } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
+import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
+import { InputTextModule } from 'primeng/inputtext';
 import { Message } from 'primeng/message';
-import { AuthService, sanitizeReturnPath } from '@aj-boilerplate/auth';
+import { AuthService, claimGatewayAutoSignIn, isWellFormedEmail, sanitizeReturnPath } from '@aj-boilerplate/auth';
 import { DocumentTitleService, initialsOf } from '@aj-boilerplate/shared/util';
 
 /**
- * Public sign-in screen. In `dev` mode it renders the role picker (choose a sample user); in
- * `oidc` mode it offers a single sign-on button. Signing in persists the session and routes to
- * the originally-requested page (the `from` query param `authGuard` set) or home.
+ * Public sign-in screen, served by nginx WITHOUT a session (`location = /login`).
+ *
+ * `gateway` mode: the gateway answers an unauthenticated navigation with `302 /login?from=<path>`,
+ * so a visitor lands here. When `from` is present the page starts the sign-in itself, once per
+ * five minutes per tab (`claimGatewayAutoSignIn` is the brake against a redirect loop); otherwise,
+ * or when the brake holds, the visitor presses the button. An email is optional and, when well
+ * formed, is passed to the identity provider as `login_hint`. Sign-in is a full-page navigation to
+ * `/auth/login`, so it never resolves here.
+ *
+ * `dev` mode renders the role picker (choose a sample user) and routes to `from` or home.
  *
  * The hero copy is placeholder — replace it with your product's own.
  */
@@ -16,7 +25,7 @@ import { DocumentTitleService, initialsOf } from '@aj-boilerplate/shared/util';
   selector: 'app-login-page',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonModule, Message],
+  imports: [ButtonModule, InputTextModule, Message, ReactiveFormsModule],
   template: `
     <div class="login-wrap">
       <aside class="login-hero">
@@ -57,6 +66,12 @@ import { DocumentTitleService, initialsOf } from '@aj-boilerplate/shared/util';
             </p-message>
           }
 
+          @if (autoSignInHeld()) {
+            <p-message severity="info" [closable]="false" styleClass="login-alert" data-testid="auto-sign-in-held">
+              We could not complete sign-in automatically. Please use the button below to try again.
+            </p-message>
+          }
+
           @if (error(); as message) {
             <p role="alert" class="login-error">
               <i class="pi pi-exclamation-circle" aria-hidden="true"></i>
@@ -83,12 +98,25 @@ import { DocumentTitleService, initialsOf } from '@aj-boilerplate/shared/util';
               }
             </div>
           } @else {
+            <div class="field">
+              <label for="login-email">Work email (optional)</label>
+              <input
+                id="login-email"
+                pInputText
+                type="email"
+                autocomplete="username"
+                data-testid="login-email"
+                [formControl]="email"
+                (keydown.enter)="signIn(undefined, email.value)"
+              />
+              <span class="hint">Pre-fills the sign-in page of your identity provider.</span>
+            </div>
             <p-button
               label="Sign in with single sign-on"
               [icon]="pendingId() === null ? 'pi pi-sign-in' : 'pi pi-spin pi-spinner'"
               styleClass="btn-block login-cta"
               [disabled]="pendingId() !== null"
-              (onClick)="signIn()"
+              (onClick)="signIn(undefined, email.value)"
             />
           }
 
@@ -109,23 +137,43 @@ export class LoginPageComponent implements OnInit {
 
   protected readonly pendingId = signal<string | null>(null);
   protected readonly error = signal<string | null>(null);
+  protected readonly autoSignInHeld = signal(false);
+  protected readonly email = new FormControl('', { nonNullable: true });
 
   ngOnInit(): void {
     this.documentTitle.set('Sign in · Application');
+    this.autoSignIn();
+  }
+
+  /**
+   * Starts the gateway sign-in without a click. Only when the gateway sent us here (`from` is
+   * present), only in gateway mode, never right after a session expired (the user should read the
+   * notice first), and only if `claimGatewayAutoSignIn` grants the one attempt per window.
+   */
+  private autoSignIn(): void {
+    if (this.auth.mode !== 'gateway' || !this.route.snapshot.queryParamMap.has('from') || this.auth.sessionExpired()) {
+      return;
+    }
+    if (!claimGatewayAutoSignIn()) {
+      this.autoSignInHeld.set(true);
+      return;
+    }
+    void this.signIn();
   }
 
   protected initials(name: string): string {
     return initialsOf(name);
   }
 
-  async signIn(userId?: string): Promise<void> {
+  async signIn(userId?: string, loginHint?: string): Promise<void> {
     this.error.set(null);
+    // An address that is not an email is dropped, not sent: the hint is a convenience.
+    const hint = loginHint !== undefined && isWellFormedEmail(loginHint) ? loginHint : undefined;
     this.pendingId.set(userId ?? '__sso__');
     try {
-      await this.auth.signIn(userId);
-      // Dev-mode sign-in never leaves the app (no identity-provider round trip), so `from` is
-      // still the raw, unauthenticated query param — sanitize it before navigating, exactly as
-      // the real-provider callback path does for its round-tripped value.
+      await this.auth.signIn(userId, hint);
+      // Only dev mode reaches here (gateway sign-in never resolves). `from` is still the raw,
+      // unauthenticated query param, so sanitize it before navigating.
       const from = sanitizeReturnPath(this.route.snapshot.queryParamMap.get('from') ?? '/');
       void this.router.navigateByUrl(from);
     } catch (err) {

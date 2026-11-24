@@ -13,12 +13,45 @@ github_repository = "your-org/your-repo"
 # reference it by digest for a reproducible deployment.
 api_image = "europe-west1-docker.pkg.dev/your-project-id/app-dev-containers/api:latest"
 
+auth_image         = "europe-west1-docker.pkg.dev/your-project-id/app-dev-containers/auth:latest"
+auth_migrate_image = "europe-west1-docker.pkg.dev/your-project-id/app-dev-containers/auth-migrate:latest" # Auth Dockerfile, --target build
+web_image          = "europe-west1-docker.pkg.dev/your-project-id/app-dev-containers/web:latest"
+
+# --- Identity. Keycloak and the identity provider already exist; nothing here is a secret. ---
+# Create two Secret Manager secrets first (README.md): the identity provider's client secret and the
+# portal client's secret. They are read by name, never by value.
+entra_authority           = "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000"
+entra_client_id           = "00000000-0000-0000-0000-000000000000"
+keycloak_base_url         = "https://keycloak.example.com"
+keycloak_realm            = "your-realm"
+keycloak_portal_client_id = "your-portal-client"
+# keycloak_subject_issuer   = "oidc"
+# keycloak_issuer           = null  # default <base>/realms/<realm>
+# keycloak_jwks_url         = null  # default <issuer>/protocol/openid-connect/certs
+# entra_client_secret_name    = null  # default <prefix>-<env>-entra-client-secret
+# keycloak_client_secret_name = null  # default <prefix>-<env>-keycloak-client-secret
+
+# The origin users reach the site at. Null uses the web service's run.app address; set it when a
+# custom domain or load balancer is in front. <origin>/auth/callback is the redirect URI to register.
+# public_origin = "https://app.example.com"
+
+# --- User admin and sign-in history (all optional; see infra/gcp/README.md) ---
+# auth_session_events_enabled            = true    # the Auth service reports session ends to the API (Google ID token, no secret)
+# auth_portal_display_name               = "My App"
+# auth_admin_keycloak_client_id          = "my-app-admin"   # needs the secret <prefix>-<env>-keycloak-admin-client-secret
+# auth_admin_managed_group_paths         = ["/my-app"]
+# auth_admin_allowed_email_domains       = ["example.com"]
+
 # --- Sizing. Defaults suit dev; raise them for staging and prod. ---
 # sql_tier             = "db-custom-2-7680"
 # sql_disk_size_gb     = 20
 # redis_memory_size_gb = 1
 # api_min_instances    = 0
 # api_max_instances    = 4
+# auth_min_instances   = 1   # 1 for prod: every gated request calls the Auth service
+# auth_max_instances   = 4
+# web_min_instances    = 1   # must stay >= 1, see variables.tf
+# web_max_instances    = 4
 
 # --- Networking ---
 # Each environment needs its own non-overlapping /28 for the VPC connector.

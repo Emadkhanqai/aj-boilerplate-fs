@@ -6,11 +6,14 @@ is here.
 
 ## Authentication & identity
 
-- **Internal users:** corporate SSO via the cloud provider's identity service (OIDC). The
-  application stores **no local credentials** and implements no password flow. Deprovisioning
-  at the identity provider removes access on the next session refresh.
+- **Internal users:** corporate SSO with Microsoft Entra ID, run by the Auth service as a
+  server-side Authorization Code + PKCE flow. **The browser holds no token**, only an opaque
+  `HttpOnly` session cookie that nginx exchanges for a Keycloak JWT. The application stores **no
+  local credentials** and implements no password flow. Deprovisioning at the identity provider
+  removes access on the next refresh; removing a Keycloak role does the same, and the user is told
+  (access-revoked dialog). Sessions end after 8 h idle or 12 h from sign-in.
 - **Authorization:** **Keycloak** is the source of truth for roles, scopes, and permissions,
-  and is provider-independent — it works identically under either `CLOUD_PROVIDER` (see
+  and is provider-independent — it works identically under either `CLOUD_PROVIDER` and inside USP (see
   [`cloud.md`](cloud.md)). Keycloak roles are mapped to ASP.NET Core authorization policies.
 - **External / anonymous surfaces:** if the project exposes one, access is a **single-purpose,
   time-bound, revocable, scoped token**, not a guessable URL. Store a hash of the token, never

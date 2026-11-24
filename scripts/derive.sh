@@ -36,6 +36,25 @@
 #      anything else untracked cannot leak into a published repository, because the file
 #      list comes from `git ls-files` rather than from the filesystem.
 #
+# DECISIONS RECORDED HERE BECAUSE THEY ARE DERIVATION RULES (ADR-0011 explains the principle)
+#   * ONE OpenAPI document, docs/api/openapi.json, written by src/backend/scripts/generate-openapi.sh
+#     and shared verbatim into both derived repositories. The frontend does not keep a copy:
+#     src/frontend/scripts/generate-api.mjs and the UserProfile contract spec look the document up
+#     (beside the package, else two levels up), so they are identical in fs and fe.
+#   * ONE .env.example, at the root, with `# @derive keep=...` blocks (see env_example_for).
+#   * Markdown links are re-pointed per repository by scripts/derive-links.py: where the target
+#     lands in the derived repository, else on GitHub in aj-boilerplate-fs (the other stack).
+#   * scripts/derive.sh and scripts/derive-links.py do not ship: they only run in the full-stack tree.
+#   * The other stack's agents, standards, templates and commands under .claude/, and for fe the
+#     backend deploy workflows and infra/, are dropped (BE_DROP / FE_DROP). They are guidance and
+#     tooling for work the derived repository cannot do.
+#   * STILL HAND-MAINTAINED PER DERIVED REPOSITORY, because they are shaped by the repository and
+#     not derivable from this tree: .github/ (workflows, dependabot, CODEOWNERS, templates),
+#     .gitignore, .gitattributes, .editorconfig, .dockerignore, .prettierignore, .mcp.json,
+#     .vscode/, sonar-project.properties, LICENSE, DESIGN.md, CONTRIBUTING.md, SECURITY.md,
+#     CHANGELOG.md (each stack keeps its own history), and README.md / CLAUDE.md. The 1.0.0
+#     derivation decided each of them file by file; CHANGELOG.md [1.0.0] says how.
+#
 # WHAT IT DOES NOT DO: it does not create git repositories, does not commit, and does not
 # push. It produces two directories. What happens to them is a human decision.
 
@@ -46,15 +65,35 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 MARKER='.derived-by-derive-sh'
 
+# Where cross-stack links point once the other stack is not in the derived repository. Derived from
+# this clone's `origin`, so a fork derives links to itself; override with FS_URL=... for a mirror.
+FS_URL="${FS_URL:-}"
+
 # Paths that exist in this tree but must never reach a derived repository.
 # One entry per line, matched as a prefix against the repository-relative path.
+#
+# `scripts/derive.sh` is dropped because it only works in the full-stack tree (it refuses to run
+# without src/backend, src/frontend and .claude) and ADR-0011 says a derived tree is never edited.
+# Shipping it would hand every consumer of be/fe a script that dies on its first line.
 COMMON_DROP='
 docker-compose.yml
+scripts/derive.sh
+scripts/derive-links.py
 '
 
+# The other stack's slice of the harness is dropped too. It is guidance written for work that cannot
+# happen in the derived repository (a backend agent in a repository with no backend), and the files
+# that mention it (.claude/README.md, master-agent.md) have their links re-pointed at
+# aj-boilerplate-fs by scripts/derive-links.py instead of dangling. Amended 2026-11-24, ADR-0011.
 BE_DROP='
 src/frontend/
 .github/workflows/frontend-ci.yml
+.claude/agents/frontend-agent.md
+.claude/agents/frontend-engineer.md
+.claude/commands/sync.md
+.claude/standards/angular.md
+.claude/standards/typescript.md
+.claude/templates/angular-component.md
 '
 
 # `sonar-project.properties` is dropped for fe and NOT for be, which looks asymmetric until you
@@ -63,11 +102,36 @@ src/frontend/
 # both would claim the same path — and the promoted one has to win, because it is what the CLI
 # scanner actually reads from projectBaseDir. Dropping the root copy here is what resolves that
 # collision. The be repository has no such clash: SonarScanner for .NET reads the XML instead.
+#
+# `infra/` and the deploy workflows are dropped for fe because everything in them provisions or rolls
+# out the API; the frontend repository has nothing to deploy from them (its image is built by the
+# consumer's own pipeline). Amended 2026-11-24, ADR-0011.
 FE_DROP='
 src/backend/
 .github/workflows/backend-ci.yml
+.github/workflows/deploy.yml
+.github/workflows/deploy-environment.yml
+infra/
 SonarQube.Analysis.xml
 sonar-project.properties
+.claude/agents/backend-agent.md
+.claude/agents/backend-engineer.md
+.claude/commands/new-migration.md
+.claude/standards/api-design.md
+.claude/standards/clean-architecture.md
+.claude/standards/cloud.md
+.claude/standards/dotnet-security.md
+.claude/standards/dotnet.md
+.claude/standards/ef-core.md
+.claude/standards/efcore-migrations.md
+.claude/standards/middleware.md
+.claude/standards/mssql.md
+.claude/standards/swagger-openapi.md
+.claude/templates/api-controller.md
+.claude/templates/domain-entity.md
+.claude/templates/ef-migration.md
+.claude/workflows/database-change.md
+.claude/workflows/ef-core-migration.md
 '
 
 # Files copied verbatim, WITHOUT the path rewriting described below, because rewriting
@@ -139,6 +203,17 @@ case "$OUT_BASE" in
   /*) ;;
   *)  OUT_BASE="$PWD/$OUT_BASE" ;;
 esac
+
+if [ -z "$FS_URL" ]; then
+  FS_URL="$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -e 's#^git@github.com:#https://github.com/#' -e 's#\.git$##')"
+fi
+if [ "$WRITE" -eq 1 ]; then
+  case "$FS_URL" in
+    https://*) ;;
+    *) die "cannot work out the aj-boilerplate-fs URL from 'origin' (got '$FS_URL'); set FS_URL=https://github.com/<org>/aj-boilerplate-fs" ;;
+  esac
+  command -v python3 >/dev/null 2>&1 || die 'python3 is required to re-point Markdown links (scripts/derive-links.py).'
+fi
 
 SOURCE_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 SOURCE_DIRTY=''
@@ -244,6 +319,78 @@ Remove it yourself if you are sure, or choose a different --out."
   rm -rf -- "$_dir"
 }
 
+# env_example_for <target> <source-file>   -> the derived `.env.example` on stdout
+#
+# There is ONE `.env.example`, at the root of this tree, and it documents every variable of the full
+# stack. A single-stack repository must not list the other stack's keys, so the file marks what is
+# stack-specific:
+#
+#     # @derive keep=fs,be        <- the block below is kept only in the named repositories
+#     ...
+#     # @derive end
+#
+# Unmarked lines are kept everywhere. Marker lines never reach a derived file. Blocks may nest; a
+# line is kept only when every block around it names the repository.
+# `src/backend/` and `src/frontend/` are stripped from the text for the same reason
+# rewrite_paths does it: the promoted stack IS the root there. (rewrite_paths does not run on
+# `.example` files, so it is done here.) The file had a second, hand-kept copy at
+# src/backend/.env.example until ADR-0011's rule "one document, no mirror" was applied to it; the
+# copy lacked every Keycloak and Auth key and collided with this one at promotion.
+env_example_for() {
+  _t="$1"; _src="$2"
+  awk -v t="$_t" '
+    /^# @derive keep=/ {
+      list = substr($0, index($0, "=") + 1); n = split(list, a, ","); k = 0
+      for (i = 1; i <= n; i++) if (a[i] == t) k = 1
+      depth++; st[depth] = (k && (depth == 1 || st[depth - 1])); next
+    }
+    /^# @derive end/ { depth--; next }
+    { if (depth == 0 || st[depth]) print }
+  ' "$_src" | sed -e 's#src/backend/##g' -e 's#src/frontend/##g' | cat -s
+}
+
+# classify <source path>   sets C_KIND (shared|promoted), C_REL, C_OUT (the derived path) and C_COLLIDE;
+# returns 1 when the file is dropped. Uses the derive() variables `promoted`, `drop_list`, `target`.
+#
+#   1. Dropped outright — the other stack, and files that only make sense full-stack.
+#   2. Promoted — src/<stack>/x becomes x at the root.
+#   3. Collision. A promoted file can land on a shared file of the same name — most obviously
+#      README.md, CLAUDE.md, .editorconfig, .gitignore, .dockerignore. The shared file is NOT
+#      silently overwritten; both are kept, the promoted one under a suffixed name, and the
+#      collision is reported. A root file that is itself being dropped is not a collision: the
+#      promoted file takes the root name cleanly. `docker-compose.yml` is the case that matters —
+#      the full-stack compose is dropped, and the stack's own compose becomes the one at the root,
+#      which is exactly what a single-stack repository wants.
+#
+#   4. Two dotfiles are not "collisions" but have their own semantics, and a suffixed copy of either
+#      is a file no tool reads (measured 2026-11-24: the derived backend failed `dotnet format`, 9
+#      files, because the full-stack root .editorconfig applied instead of the backend's):
+#        .editorconfig  The stack's own file declares `root = true`, so in this tree it is the ONLY
+#                       one that applies to that stack. It therefore REPLACES the root file.
+#        .gitignore     Git applies nested ignore files on top of the root one, so the stack's file
+#                       is APPENDED to the root file.
+classify() {
+  _f="$1"
+  if matches_any "$_f" "$drop_list" || matches_any "$_f" "$COMMON_DROP"; then
+    return 1
+  fi
+  if [ "$_f" = '.editorconfig' ] && git -C "$ROOT" ls-files --error-unmatch "$promoted/.editorconfig" >/dev/null 2>&1; then
+    return 1
+  fi
+  case "$_f" in
+    "$promoted"/*) C_REL="${_f#"$promoted"/}"; C_KIND='promoted' ;;
+    *)             C_REL="$_f";               C_KIND='shared' ;;
+  esac
+  C_OUT="$C_REL"; C_COLLIDE=0
+  if [ "$C_KIND" = 'promoted' ] && [ -e "$ROOT/$C_REL" ] \
+     && [ "$C_REL" != '.editorconfig' ] && [ "$C_REL" != '.gitignore' ] \
+     && ! matches_any "$C_REL" "$COMMON_DROP" && ! matches_any "$C_REL" "$drop_list"; then
+    C_COLLIDE=1
+    C_OUT="$(suffixed_name "$C_REL" "$target")"
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # derive <target>   target = be | fe
 # ---------------------------------------------------------------------------
@@ -292,43 +439,34 @@ or pass a different --out."
     } > "$dest/$MARKER"
   fi
 
+  # source path -> derived path for every file that will exist, so a link can be re-pointed at where
+  # its target LANDS (scripts/derive-links.py). Built first because a link can point at a file the
+  # loop below has not reached yet. Lives beside the derived trees, never inside one, and is
+  # truncated rather than deleted on each run.
+  map_file="$OUT_BASE/.derive-map-$target.tsv"
+  if [ "$WRITE" -eq 1 ]; then
+    : > "$map_file"
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      classify "$f" && printf '%s\t%s\n' "$f" "$C_OUT" >> "$map_file"
+    done <<EOF
+$files
+EOF
+  fi
+
   while IFS= read -r f; do
     [ -z "$f" ] && continue
 
-    # 1. Dropped outright — the other stack, and files that only make sense full-stack.
-    if matches_any "$f" "$drop_list" || matches_any "$f" "$COMMON_DROP"; then
+    # Dropped / promoted / collision — see classify().
+    if ! classify "$f"; then
       n_dropped=$((n_dropped + 1))
       continue
     fi
-
-    # 2. Promoted — src/<stack>/x becomes x at the root.
-    case "$f" in
-      "$promoted"/*)
-        rel="${f#"$promoted"/}"
-        kind='promoted'
-        ;;
-      *)
-        rel="$f"
-        kind='shared'
-        ;;
-    esac
-
-    # 3. Collision. A promoted file can land on a shared file of the same name — most
-    #    obviously README.md, CLAUDE.md, .editorconfig, .gitignore, .dockerignore. The
-    #    shared file is NOT silently overwritten; both are kept, the promoted one under a
-    #    suffixed name, and the collision is reported.
-    #
-    #    A root file that is itself being dropped is not a collision: the promoted file
-    #    takes the root name cleanly. `docker-compose.yml` is the case that matters —
-    #    the full-stack compose is dropped, and the stack's own compose becomes the one
-    #    at the root, which is exactly what a single-stack repository wants.
-    out_rel="$rel"
-    if [ "$kind" = 'promoted' ] && [ -e "$ROOT/$rel" ] \
-       && ! matches_any "$rel" "$COMMON_DROP" && ! matches_any "$rel" "$drop_list"; then
+    kind="$C_KIND"; out_rel="$C_OUT"
+    if [ "$C_COLLIDE" -eq 1 ]; then
       n_collide=$((n_collide + 1))
-      out_rel="$(suffixed_name "$rel" "$target")"
       collisions="${collisions}
-      ${f}  ->  ${out_rel}   (root ${rel} kept as-is)"
+      ${f}  ->  ${out_rel}   (root ${C_REL} kept as-is)"
     fi
 
     if matches_any "$out_rel" "$REVIEW_REQUIRED"; then
@@ -344,8 +482,19 @@ or pass a different --out."
 
     if [ "$WRITE" -eq 1 ]; then
       mkdir -p "$dest/$(dirname "$out_rel")"
-      cp -p "$ROOT/$f" "$dest/$out_rel"
-      [ "$do_rewrite" -eq 1 ] && rewrite_paths "$dest/$out_rel" "$promoted"
+      if [ "$out_rel" = '.env.example' ]; then
+        env_example_for "$target" "$ROOT/$f" > "$dest/$out_rel"
+      elif [ "$out_rel" = '.gitignore' ] && [ "$kind" = 'promoted' ]; then
+        { printf '\n# ---- from %s/.gitignore (aj-boilerplate-fs) ----\n' "$promoted"; cat "$ROOT/$f"; } >> "$dest/$out_rel"
+      else
+        cp -p "$ROOT/$f" "$dest/$out_rel"
+        # Links first, text rewrite second: the rewrite would turn a GitHub URL containing
+        # `src/backend/` into `./`.
+        case "$out_rel" in
+          *.md) python3 "$ROOT/scripts/derive-links.py" "$map_file" "$ROOT" "$FS_URL" "$f" "$out_rel" "$dest/$out_rel" "$promoted" ;;
+        esac
+        [ "$do_rewrite" -eq 1 ] && rewrite_paths "$dest/$out_rel" "$promoted"
+      fi
     fi
   done <<EOF
 $files
@@ -404,6 +553,25 @@ check_contamination() {
       problems=$((problems + 1))
     fi
   done
+
+  # The example environment file is filtered per stack. A leaked marker, or a key list that is not
+  # the stack's own, means the filter did not run or the markers drifted. The counts are the
+  # controls: each one is a key that must be present (be, fe) or absent (the other stack).
+  if [ -f "$dest/.env.example" ]; then
+    if grep -q '@derive' "$dest/.env.example"; then
+      printf '  .env.example still contains @derive marker lines.\n' >&2; problems=$((problems + 1))
+    fi
+    case "$target" in
+      be) must='^Keycloak__Authority=' ; must_not='^AUTH_MODE=' ;;
+      fe) must='^AUTH_MODE='           ; must_not='^ConnectionStrings__Default=' ;;
+    esac
+    grep -q "$must" "$dest/.env.example" || { printf '  .env.example lacks %s\n' "$must" >&2; problems=$((problems + 1)); }
+    if grep -q "$must_not" "$dest/.env.example"; then
+      printf '  .env.example carries the other stack: %s\n' "$must_not" >&2; problems=$((problems + 1))
+    fi
+  else
+    printf '  MISSING .env.example\n' >&2; problems=$((problems + 1))
+  fi
 
   if [ "$problems" -gt 0 ]; then
     printf '  %s check FAILED with %s problem(s).\n' "$target" "$problems" >&2

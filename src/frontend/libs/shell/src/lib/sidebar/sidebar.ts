@@ -1,7 +1,7 @@
 import { Component, ChangeDetectionStrategy, computed, inject, input } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
-import { AuthService } from '@aj-boilerplate/auth';
+import { AuthService, highestRole } from '@aj-boilerplate/auth';
 import { initialsOf } from '@aj-boilerplate/shared/util';
 import { ButtonModule } from 'primeng/button';
 import { filter, map } from 'rxjs';
@@ -105,7 +105,7 @@ export class SidebarComponent {
 
   readonly userName = computed(() => this.auth.user()?.name ?? 'Unknown');
   readonly userInitials = computed(() => initialsOf(this.userName()));
-  readonly primaryRole = computed(() => this.auth.roles()[0] ?? '—');
+  readonly primaryRole = computed(() => highestRole(this.auth.roles()) ?? '—');
 
   private isVisible(item: NavItem): boolean {
     return item.requiredCapability === undefined || this.auth.capabilities()[item.requiredCapability];

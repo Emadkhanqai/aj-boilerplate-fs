@@ -19,7 +19,7 @@ src/frontend/
 │   ├── web/                    # the application shell
 │   └── web-e2e/                # Playwright end-to-end suite
 └── libs/
-    ├── auth/                   # guard, HTTP interceptor, token handling
+    ├── auth/                   # gateway/dev providers, route guards, role -> capability map (no tokens)
     ├── data-access/
     │   ├── api-client/         # thin typed wrappers over the generated client
     │   └── api-types/          # GENERATED from OpenAPI — never hand-edited
@@ -130,8 +130,10 @@ export class ItemListComponent {
   alone (see [`owasp-security.md`](owasp-security.md)).
 - **No `bypassSecurityTrustHtml` / `innerHTML` with user content** unless it is sanitised and
   the exception is reviewed. Angular escapes by default — keep it that way.
-- Tokens are held by the `auth` lib and attached by an interceptor. No component reads a token,
-  and nothing sensitive is persisted to `localStorage` without a reviewed reason.
+- **The browser holds no token.** Sign-in is a navigation to `/auth/login`; the session is an
+  `HttpOnly` cookie the SPA cannot read, and nginx injects the API's `Authorization` header. Never
+  store a token, never attach `Authorization` from the SPA, and nothing sensitive is persisted to
+  `localStorage` without a reviewed reason.
 
 ## TypeScript & tooling
 

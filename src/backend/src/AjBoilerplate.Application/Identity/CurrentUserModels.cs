@@ -6,13 +6,16 @@ namespace AjBoilerplate.Application.Identity;
 /// <param name="DisplayName">The caller's human-readable name.</param>
 /// <param name="Email">The caller's email address; empty when the token carries none.</param>
 /// <param name="Roles">Every canonical role the caller holds. Empty when none is recognised.</param>
-/// <param name="Capabilities">What those roles permit.</param>
+/// <param name="Capabilities">What those roles, together with the permissions, permit.</param>
+/// <param name="Permissions">Every canonical <see cref="Permissions"/> value the caller holds. Never
+/// part of <paramref name="Roles"/>.</param>
 public sealed record UserProfileDto(
     string UserId,
     string DisplayName,
     string Email,
     IReadOnlyList<string> Roles,
-    UserCapabilitiesDto Capabilities);
+    UserCapabilitiesDto Capabilities,
+    IReadOnlyList<string> Permissions);
 
 /// <summary>
 /// The client-facing PROJECTION of <see cref="RoleCapabilities"/>.

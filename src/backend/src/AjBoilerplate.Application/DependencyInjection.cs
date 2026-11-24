@@ -1,9 +1,11 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.AuthenticationHistory;
 using AjBoilerplate.Application.Features;
 using AjBoilerplate.Application.Idempotency;
 using AjBoilerplate.Application.Identity;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Application.Messaging;
+using AjBoilerplate.Application.Portals;
 using FluentValidation;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,8 +30,17 @@ public static class DependencyInjection
         // this happily but cannot resolve it, which is correct: there is no caller to describe.
         services.AddScoped<ICurrentUserService, CurrentUserService>();
 
+        // GET /api/v1/me/portals: the configured portal list, filtered by the caller's capabilities.
+        services.AddScoped<IPortalAccessService, PortalAccessService>();
+
         // Claims and releases Idempotency-Key records for the Api layer's middleware.
         services.AddScoped<IIdempotencyService, IdempotencyService>();
+
+        // One sign-in row per gateway session, for SignInRecordingMiddleware.
+        services.AddScoped<ISignInRecorder, SignInRecorder>();
+
+        // The admin history list and the Auth service's session-ended receiver.
+        services.AddScoped<IAuthenticationHistoryService, AuthenticationHistoryService>();
 
         services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
 

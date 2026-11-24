@@ -24,6 +24,10 @@ public interface IActorClaims
     /// <summary>Every canonical role the caller holds. Never raw authorization-server keys.</summary>
     IReadOnlyList<string> Roles { get; }
 
+    /// <summary>Every canonical <see cref="Permissions"/> value the caller holds. Separate from
+    /// <see cref="Roles"/> on purpose: a permission is not a seat.</summary>
+    IReadOnlyList<string> Permissions { get; }
+
     /// <summary>Optional group/tenant/scope membership from the token, for ownership checks. Empty
     /// when the token carries no such claim.</summary>
     IReadOnlyList<string> Groups { get; }

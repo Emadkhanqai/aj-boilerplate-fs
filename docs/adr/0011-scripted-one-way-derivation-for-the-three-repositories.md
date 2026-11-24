@@ -88,6 +88,23 @@ The script:
   every shared harness file present. This is the drift check ADR-0006 asked for, applied
   at the moment of derivation rather than after publication.
 
+**Amended 2026-11-24 (the 1.0.0 derivation).** Five rules were added to what the script decides, after
+the first derivation of the gateway-auth release showed what a hand-maintained derived repository
+had drifted into:
+
+- one `.env.example`, filtered per stack by `# @derive keep=...` blocks, instead of a second copy
+  at `src/backend/.env.example` that collided with the root file;
+- Markdown links re-pointed per repository by `scripts/derive-links.py` (to where the target lands,
+  or to `aj-boilerplate-fs` on GitHub when it does not ship);
+- `scripts/derive.sh` and `scripts/derive-links.py` are not shipped;
+- the other stack's agents, standards, templates and commands under `.claude/` are dropped, and for
+  the frontend repository so are `infra/` and the backend deploy workflows;
+- the frontend finds the one OpenAPI document by lookup (`scripts/generate-api.mjs`), so no code is
+  rewritten and no second copy exists.
+
+"Shared verbatim" above is therefore true of `docs/` and of `.claude/` (less the other stack's files),
+and **not** of the files the script's header lists as still hand-maintained per derived repository.
+
 **Dry run is the default.** `scripts/derive.sh` prints the plan and writes nothing.
 Writing requires `--write`.
 

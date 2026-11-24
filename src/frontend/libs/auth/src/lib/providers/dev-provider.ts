@@ -4,11 +4,11 @@ import type { AuthProviderApi, AuthSession, DevUser, UserProfile } from '../auth
 /**
  * Dev auth provider — the role picker used for local/offline development. There is no identity
  * provider: the operator chooses one of the sample users, and the chosen session is persisted to
- * localStorage so a refresh keeps you signed in. Real deployments use the OIDC provider.
+ * localStorage so a refresh keeps you signed in. Deployed builds use the gateway provider.
  *
  * This is a DEVELOPMENT convenience and is selected only when `__APP_AUTH_MODE__` is `dev`
- * (see `provider-factory.ts`). It grants no real access: the tokens are synthetic markers and
- * the backend will reject them.
+ * (see `provider-factory.ts`). It grants no real access: no request carries a credential, so a real
+ * backend rejects every call. It exists for local UI work and the offline demo/e2e builds.
  */
 
 /** localStorage key holding the picked dev session. Exported so the offline mock layer can
@@ -27,7 +27,6 @@ function toSession(devUser: DevUser): AuthSession {
   return {
     user: { userId: devUser.userId, name: devUser.name, email: devUser.email },
     roles: [devUser.role],
-    accessToken: `dev.${devUser.userId}`,
   };
 }
 
@@ -50,8 +49,7 @@ function readStored(): AuthSession | null {
       typeof user['userId'] !== 'string' ||
       typeof user['name'] !== 'string' ||
       typeof user['email'] !== 'string' ||
-      !Array.isArray(roles) ||
-      typeof candidate['accessToken'] !== 'string'
+      !Array.isArray(roles)
     ) {
       return null;
     }
@@ -62,7 +60,6 @@ function readStored(): AuthSession | null {
     return {
       user: { userId: user['userId'], name: user['name'], email: user['email'] },
       roles: validRoles,
-      accessToken: candidate['accessToken'],
     };
   } catch {
     return null;

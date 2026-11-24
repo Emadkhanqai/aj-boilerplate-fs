@@ -1,9 +1,14 @@
 using AjBoilerplate.Application.Abstractions;
+using AjBoilerplate.Application.AuthenticationHistory;
+using AjBoilerplate.Application.Administration;
 using AjBoilerplate.Application.Features;
+using AjBoilerplate.Application.Portals;
 using AjBoilerplate.Application.Items;
 using AjBoilerplate.Infrastructure.Cloud;
 using AjBoilerplate.Infrastructure.Email;
 using AjBoilerplate.Infrastructure.Features;
+using AjBoilerplate.Infrastructure.Identity;
+using AjBoilerplate.Infrastructure.Portals;
 using AjBoilerplate.Infrastructure.Messaging;
 using AjBoilerplate.Infrastructure.Persistence;
 using AjBoilerplate.Infrastructure.Secrets;
@@ -47,9 +52,28 @@ public static class DependencyInjection
         services.AddScoped<IIdempotencyRepository, IdempotencyRepository>();
 
         services.AddScoped<IFeatureAnnouncementRepository, FeatureAnnouncementRepository>();
+        services.AddScoped<IAuthenticationEventRepository, AuthenticationEventRepository>();
 
         // SAMPLE SLICE — delete with the rest of the Item sample.
         services.AddScoped<IItemRepository, ItemRepository>();
+
+        // The portal list for GET /api/v1/me/portals, from configuration (no catalogue outside USP).
+        services.AddSingleton<IPortalCatalogue, ConfigurationPortalCatalogue>();
+
+        // The admin user screens' upstream: the Auth service's /internal/admin/*, by X-Admin-Api-Key.
+        services.Configure<AuthServiceOptions>(configuration.GetSection(AuthServiceOptions.SectionName));
+        services.AddHttpClient<IIdentityAdministration, AuthServiceIdentityAdministration>((provider, client) =>
+        {
+            // Read when the client is created, not at registration, so the running host's configuration decides.
+            var authService = provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AuthServiceOptions>>().Value;
+            // An unconfigured base address leaves the client without one; the class refuses to send first.
+            if (Uri.TryCreate(authService.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseAddress))
+            {
+                client.BaseAddress = baseAddress;
+            }
+
+            client.Timeout = authService.EffectiveTimeout;
+        });
 
         return services;
     }
@@ -103,8 +127,9 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// The CLOUD_PROVIDER switch. Exactly one pair of registrations differs between clouds — the
-    /// secrets provider here, and the authentication issuer in <c>AddApiAuthentication</c>.
+    /// The CLOUD_PROVIDER switch. Exactly one registration differs between clouds — the secrets
+    /// provider here (plus file storage, below). Authentication does not branch on the cloud: the API
+    /// only ever validates Keycloak tokens, see <c>AddApiAuthentication</c>.
     /// </summary>
     private static void AddCloud(IServiceCollection services, IConfiguration configuration)
     {

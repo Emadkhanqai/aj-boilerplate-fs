@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------------------
-# The API and its dependencies on Google Cloud.
+# The API and its dependencies on Google Cloud, plus the Auth service and the web gateway that
+# sit in front of it (auth.tf, web.tf).
 #
-#   Cloud Run           the API
+#   Cloud Run           the API; the Auth service and its migration job; the web gateway
 #   Cloud SQL           SQL Server, private IP only
 #   Memorystore         Redis
 #   Secret Manager      the connection string the API reads at startup
@@ -247,6 +248,9 @@ resource "google_project_iam_member" "api_cloudsql_client" {
   member  = "serviceAccount:${google_service_account.api.email}"
 }
 
+# `ingress = ALL` is safe here only because the service has no `allUsers` invoker: Cloud Run answers
+# 403 to any caller without a Google ID token for an identity in the invoker list, which is the web
+# gateway's service account alone (web.tf) plus whoever the operator grants by hand.
 resource "google_cloud_run_v2_service" "api" {
   name                = "${local.name}-api"
   location            = var.region
@@ -296,6 +300,37 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "ConnectionStrings__Redis"
         value = "${google_redis_instance.cache.host}:${google_redis_instance.cache.port}"
+      }
+
+      # Keycloak is external. The API accepts only tokens minted for THIS portal's client, so the
+      # client id must be the same one the Auth service exchanges to (Auth__Portal__ClientId).
+      env {
+        name  = "Keycloak__ValidIssuer"
+        value = local.keycloak_issuer
+      }
+
+      env {
+        name  = "Keycloak__JwksUri"
+        value = local.keycloak_jwks_url
+      }
+
+      env {
+        name  = "Keycloak__ClientId"
+        value = var.keycloak_portal_client_id
+      }
+
+      # The Auth service's session-ended events (sign-in history): accepted from that one service account, by its Google ID token.
+      dynamic "env" {
+        for_each = var.auth_session_events_enabled ? {
+          Integration__AuthBackend__Audience           = local.api_origin
+          Integration__AuthBackend__AllowedCallerEmail = google_service_account.auth.email
+          Integration__AuthBackend__PortalClientId     = var.keycloak_portal_client_id
+        } : {}
+
+        content {
+          name  = env.key
+          value = env.value
+        }
       }
 
       # Injected from Secret Manager at start, never baked into the image or this file.

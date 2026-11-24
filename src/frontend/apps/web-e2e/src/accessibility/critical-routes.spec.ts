@@ -83,4 +83,26 @@ test.describe('Accessibility — critical routes', { tag: ['@mocked', '@accessib
 
     expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
   });
+
+  test('users & roles has no detectable violations', async ({ page }) => {
+    await signInAs(page, ADMIN);
+    await page.goto('/admin/users');
+    await expect(page.getByTestId('user-row').first()).toBeVisible();
+    await settleAuthenticatedShell(page);
+
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+
+    expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+  });
+
+  test('sign-in history has no detectable violations', async ({ page }) => {
+    await signInAs(page, ADMIN);
+    await page.goto('/admin/sign-in-history');
+    await expect(page.getByTestId('history-row').first()).toBeVisible();
+    await settleAuthenticatedShell(page);
+
+    const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
+
+    expect(results.violations, JSON.stringify(results.violations, null, 2)).toEqual([]);
+  });
 });

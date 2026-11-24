@@ -19,159 +19,80 @@
 
 ## What this is
 
-Most "starter templates" give you a folder structure and leave the hard parts — layering that
-actually holds, an API contract the frontend can trust, a quality gate that blocks bad merges,
-infrastructure you can read — as an exercise. This one ships those parts working, with a sample
-entity proving the whole path end to end.
+A starting point for a new product, with the hard parts already working:
 
-It is also built to be driven by [Claude Code](https://claude.com/claude-code). A `.claude/`
-harness ships **committed, not gitignored**: hooks that format on save, block dangerous shell
-commands, protect sensitive files, run the affected tests, scan for secrets, and gate a push on
-the quality gate — plus slash commands for the recurring work.
+1. **A .NET 10 API** (layered Clean Architecture, EF Core, SQL Server) and an **Angular 21 web app**
+   (Nx, PrimeNG), joined by an OpenAPI contract that generates the frontend's types.
+2. **Sign-in that keeps tokens out of the browser**: Microsoft Entra ID through a small Auth
+   service, roles from Keycloak, nginx as the gateway. It runs locally with no Microsoft tenant.
+3. **A quality gate and an agentic harness** (`.claude/`) that enforce the rules instead of
+   describing them.
 
-It contains **no business domain**. The sample entity, `Item`, is designed to be deleted on your
-first day. The other module that ships — the ["What's new" feature spotlight](docs/whats-new.md)
-— is not a sample and is meant to stay: it is domain-free plumbing every product ends up wanting.
+It contains **no business domain**. The sample `Item` is meant to be deleted on day one. The
+["What's new"](docs/whats-new.md) spotlight is not a sample; it is domain-free plumbing worth
+keeping. What it is **not**: a platform, a CMS, or a deployment you can apply as-is. `infra/`
+ships reviewed IaC with no state and no real project identifiers (see
+[what is deployed](docs/auth/setup.md#what-is-not-deployed)).
 
-## Why it exists
+## Quickstart (about 5 minutes)
 
-Every new service re-litigates the same decisions: where do business rules live, what shape is
-an error response, who owns the API contract, what blocks a merge, how do we get to two clouds
-without forking the codebase. Those decisions are made here, written down as
-[ADRs](docs/adr/), and enforced by tests and CI rather than by convention.
-
-## What you get
-
-- **Layered Clean Architecture backend** — `Domain` → `Application` → `Contracts` →
-  `Infrastructure` → `Api`, with an architecture test suite that fails the build when the
-  dependency direction is violated.
-- **A consistent API envelope** — every response is `ApiResponse<T>` with a stable
-  machine-readable `code`, a `traceId`, and a documented status-code contract. Exceptions map
-  to responses through a handler chain, not through try/catch in controllers.
-- **OpenAPI as the contract** — the frontend's TypeScript types are *generated* from the API's
-  OpenAPI document. Hand-written DTOs on the client are a bug. See [docs/api/](docs/api/).
-- **Angular 21 + Nx + PrimeNG** — standalone components, signals, `OnPush`, strict TypeScript,
-  library boundaries enforced by Nx tags, PrimeNG as the only component library.
-- **A "What's new" feature spotlight** — a popup that shows each user a newly shipped feature
-  exactly once, the first time they land on a URL prefix it is bound to. Acknowledgement is
-  server-side per user, so it survives cleared browser storage and other devices, and several
-  pending announcements chain into one carousel. Shipping the next one is an INSERT-only
-  migration and no code at all. See [docs/whats-new.md](docs/whats-new.md).
-- **EF Core migration workflow** — MSSQL, migration-based, with three migrations in the box
-  (`InitialCreate`, `AddFeatureAnnouncements`, and `AddIdempotencyRecords`) so the workflow is
-  demonstrated rather than described.
-- **Two clouds, one switch** — `CLOUD_PROVIDER=gcp|azure` selects the secrets provider and the
-  identity issuer at the composition root, and selects which `infra/` tree deploys. Terraform
-  for GCP, Bicep for Azure, provisioning the same logical shape.
-- **A real quality gate** — build with warnings as errors, `dotnet format` verification, ESLint,
-  unit + integration + architecture tests, Playwright E2E, SonarQube (zero new
-  Blocker/Critical/Major, ≥80% coverage on new code), Gitleaks, CodeQL, dependency
-  vulnerability scanning, and container image scanning with an SBOM for each image —
-  because most of a deployed image was never in this repository.
-- **The agentic harness** — 8 hooks and the `/spec`, `/task`, `/qa`, `/review`, `/implement`,
-  `/pre-push`, `/quality-gate`, `/new-migration`, `/sync` commands, all committed.
-- **A written process** — a [five-stage workflow](docs/workflow.md), a
-  [Definition of Done](docs/definition-of-done.md), a [spec template](docs/specs/TEMPLATE.md),
-  and a [Day-1 onboarding checklist](docs/onboarding.md).
-- **An architecture guide that matches the code** — [docs/architecture.md](docs/architecture.md)
-  walks every backend layer and every frontend library: what may and may not live there, what it
-  depends on, the rule the architecture tests actually enforce, a real example from the sample
-  slice, and the mistake newcomers make with it.
-
-What it is **not**: a platform, a CMS, an auth server, or a deployment you can apply as-is.
-`infra/` ships as reviewed IaC with no state and no real project identifiers — you configure a
-state backend and your own values before the first `apply`.
-
-## Quickstart
-
-### The whole stack, one command
-
-**Prerequisites:** Docker. That is the entire list.
+**Prerequisites:** Docker (Compose v2). That is all you need to run it.
+To build or test outside Docker you also need the **.NET SDK 10** (pinned in
+`src/backend/global.json`, `10.0.100`, newer feature bands accepted) and **Node.js 22** with npm 10+
+(`src/frontend/.nvmrc`, `engines` allows `>=22 <23`).
 
 ```bash
 git clone https://github.com/<your-org>/aj-boilerplate-fs.git
 cd aj-boilerplate-fs
 
-cp .env.example .env          # then set MSSQL_SA_PASSWORD; nothing else is required
+cp .env.example .env          # then set MSSQL_SA_PASSWORD (any strong value; nothing else is required)
 docker compose up --build
 ```
 
-That builds and starts SQL Server, Redis, the API, and the web app, applies the EF Core
-migrations as a discrete step before the API starts, and puts nginx in front of the SPA
-proxying `/api` to the backend — same-origin, exactly as a deployed environment behind one
-hostname would be.
+The first run builds images and imports the Keycloak realm, so allow a few minutes. Then open
+**<http://localhost:4200>**.
+
+**Sign in** with one of the seeded local users. All five share the committed, dev-only password
+`dev-only-password-never-reuse` (`LOCAL_USER_PASSWORD` in `docker-compose.yml`; override it in
+`.env`). These accounts exist only inside your local Keycloak container:
+
+| Username | Can do | What you should see |
+|---|---|---|
+| `admin` | everything | The app, with **Items**, **New Item**, edit and delete, and under **Administration** **Users & roles** and **Sign-in history** |
+| `editor` | create and edit | The app, no delete, no Administration (`editor2` is a second editor) |
+| `viewer` | read | The app, read-only; no **New Item** |
+| `noaccess` | nothing | Keycloak accepts the login, then a **403 "No access"** page |
+
+You land on the home page. As `admin`, open **Users & roles** to see who holds which seat, add a person
+(an `example.com` address; the local stack allows only that domain), move someone between seats, or
+disable them. Disabling ends their session immediately; a seat change reaches an open session within the 15 s
+roles-version poll. **Sign-in history** lists every session and,
+once a session has ended, how (logged out, expired, or signed out by the system). The top bar's portal
+switcher lists the two sample portals from the `Portals__*` settings in `docker-compose.yml`. Open
+**Items** and create, edit and (as `admin`) delete a row. That
+round trip exercises the sign-in, the gateway, the generated types, the controller, the handler,
+the repository and the migration. Seeing it work now means that when something breaks later, you
+know it was you.
 
 | | |
 |---|---|
-| Web app | <http://localhost:4200> |
-| API | <http://localhost:8080> |
-| OpenAPI UI | <http://localhost:8080/swagger> |
+| Web app (the only URL a browser should use) | <http://localhost:4200> |
+| API (needs a session; a direct browser call answers 401) | <http://localhost:8080> |
 | Readiness probe | <http://localhost:8080/health/ready> |
+| Keycloak admin console (dev-only credentials in `docker-compose.yml`) | <http://localhost:8081> |
 
 ```bash
-docker compose down       # stop, keeping the database volume
-docker compose down -v    # stop and destroy the local data
+docker compose down       # stop, keep the database volume
+docker compose down -v    # stop and destroy local data (also the fix for a stale volume)
 ```
 
-Already running SQL Server or Redis on this machine? Every published port has an override:
-set `DB_PORT`, `REDIS_PORT`, `API_PORT`, or `WEB_PORT` in `.env`. Only the host side moves —
-the containers keep talking to each other on their own network, so nothing else changes.
+Port taken? Set `WEB_PORT`, `API_PORT`, `KEYCLOAK_PORT`, `DB_PORT` or `REDIS_PORT` in `.env`.
+`.env.example` lists every variable the repository reads.
 
-`.env.example` documents every environment variable this repository reads, what each is
-for, and whether it is required. `src/backend/docker-compose.yml` and
-`src/frontend/docker-compose.yml` still exist for working on one stack while running the
-other some other way — they join an external `app-net` network you create yourself. Do not
-run them alongside the root file; they publish the same ports.
+**No Docker, UI work only:** `cd src/frontend && npm ci && npm run dev:offline` serves the app
+against in-browser mocks with a role picker.
 
-### Or run the toolchains directly (about 5 minutes)
-
-**Prerequisites:** .NET SDK 10, Node.js 22+, a reachable SQL Server and Redis, and a Keycloak
-realm if you want authorization enforced locally.
-
-```bash
-# 1 — clone
-git clone https://github.com/<your-org>/aj-boilerplate-fs.git
-cd aj-boilerplate-fs
-
-# 2 — configure. Export what the API needs, or put it in a local .env — either way
-#     nothing here is committed; .gitignore already excludes .env and .env.*
-export CLOUD_PROVIDER=gcp          # or: azure
-export ConnectionStrings__Default='Server=localhost,1433;Database=AjBoilerplate;User Id=sa;Password=<your-local-password>;TrustServerCertificate=True;'
-export ConnectionStrings__Redis='localhost:6379'
-
-# 3 — database. Applies all three migrations: InitialCreate, AddFeatureAnnouncements,
-#     AddIdempotencyRecords. The tool manifest and the SDK pin both live in src/backend,
-#     so run EF from there — the subshell leaves you back at the repository root.
-(cd src/backend \
-  && dotnet tool restore \
-  && dotnet ef database update \
-       --project        src/AjBoilerplate.Infrastructure \
-       --startup-project src/AjBoilerplate.Api)
-
-# 4 — run the API  →  http://localhost:5080  (OpenAPI UI at /swagger)
-dotnet run --project src/backend/src/AjBoilerplate.Api
-```
-
-In a second terminal:
-
-```bash
-# 5 — run the web app  →  http://localhost:4200
-cd src/frontend
-npm ci
-npx nx serve web
-```
-
-Open <http://localhost:4200> and go to **Items** — create, edit, and delete a row. That round
-trip exercises the Angular feature library, the generated API types, the controller, the
-handler, the repository, and the migration you just applied. (Routes are guarded, so you will
-be asked to sign in first once you have pointed the app at your identity provider and Keycloak
-realm.)
-
-No backend to hand? `npx nx serve web --configuration=demo` swaps in the MSW worker and serves
-the app against in-browser mocks — including one sample announcement, so the "What's new"
-spotlight is visible without a database. Those mocks are demo fixtures, not seed data.
-
-Then verify the gate is green before you change anything:
+**Before you change anything**, prove the gate is green on your machine:
 
 ```bash
 dotnet build src/backend/AjBoilerplate.slnx -warnaserror
@@ -179,56 +100,206 @@ dotnet test  src/backend/tests/AjBoilerplate.UnitTests
 cd src/frontend && npx nx affected -t lint,test,build
 ```
 
-Full command reference: [CLAUDE.md](CLAUDE.md).
+The full command reference is in [CLAUDE.md](CLAUDE.md). The first-day checklist is
+[docs/onboarding.md](docs/onboarding.md).
+
+## Architecture
+
+```mermaid
+flowchart LR
+  U["Browser<br/>session cookie only"] --> W["Web container<br/>nginx = auth gateway<br/>+ Angular app"]
+  W -->|"auth_request"| A["Auth service<br/>AjBoilerplate.Auth"]
+  W -->|"/api/ with<br/>Authorization: Bearer jwt"| P["API<br/>AjBoilerplate.Api"]
+  U -.->|"sign-in redirect"| E["Microsoft Entra ID<br/>(Keycloak stand-in locally)"]
+  A -->|"code + PKCE"| E
+  A -->|"token exchange"| K["Keycloak<br/>roles"]
+  P -->|"JWKS"| K
+  A --- R[("Redis")]
+  A --- S1[("SQL: schema auth")]
+  P --- R
+  P --- S2[("SQL: app data")]
+```
+
+- **Web container**: serves the SPA and is the gateway. It checks the cookie with the Auth service
+  on every request and gives the API a JWT. The browser never sees the JWT.
+- **Auth service**: signs users in against Entra ID, exchanges the result at Keycloak, keeps the
+  sessions (SQL system of record, Redis in front).
+- **API**: validates the Keycloak JWT and enforces roles with policies. Knows nothing about Entra.
+- **Keycloak**: where roles live. **Entra ID**: proves who the person is.
+
+## How auth works, on one screen
+
+1. You open the app. nginx asks the Auth service if your cookie is a live session. It is not, so you
+   are sent to `/login`, and the app starts sign-in at `/auth/login`.
+2. The Auth service sends you to Entra ID. You sign in there. Entra sends you back with a code.
+3. The Auth service redeems the code, exchanges the Entra token at Keycloak for a **JWT for this
+   application**, stores both encrypted, and sets one `HttpOnly` cookie.
+4. From then on nginx turns the cookie into `Authorization: Bearer <jwt>` for `/api/` calls. The
+   API checks the JWT and the user's roles.
+5. The Auth service renews the JWT in the background. Sessions end after 8 h idle or 12 h from
+   sign-in. A Keycloak or Redis outage gives a 503, never a sign-out.
+
+Two switches: `AUTH_PROVIDER=embedded` (default; you run the Auth service) or `usp` (inside the
+Al Jazeera USP platform; the shared gateway does the job and you do not deploy the Auth service),
+and `AUTH_MODE=gateway|dev` (`dev` is a role picker for UI work only).
+
+Go deeper: [docs/auth/](docs/auth/README.md) · [setup](docs/auth/setup.md) ·
+[troubleshooting](docs/auth/troubleshooting.md) · [contract](docs/auth/gateway-contract.md) ·
+[why](docs/adr/0012-gateway-session-auth.md).
+
+## What you get
+
+- **Layered Clean Architecture backend**: `Domain` → `Application` → `Contracts` →
+  `Infrastructure` → `Api`, with architecture tests that fail the build when the dependency
+  direction is violated. The Auth service is a separate project that must stay independent of them.
+- **A consistent API envelope**: every response is `ApiResponse<T>` with a stable `code` and a
+  `traceId`. Exceptions map to responses through a handler chain.
+- **OpenAPI as the contract**: the frontend's types are *generated* from `docs/api/openapi.json`.
+  Hand-written DTOs on the client are a bug. See [docs/api/](docs/api/).
+- **Angular 21 + Nx + PrimeNG**: standalone components, signals, `OnPush`, strict TypeScript, and
+  library boundaries enforced by Nx tags.
+- **Gateway session authentication** with seats (`admin`, `editor`, `viewer`) and permissions
+  (`items:read`, ...), a role-change watcher, and an access-revoked dialog.
+- **User administration**: a **Users & roles** page (members, search, add, change seats, disable and
+  enable) over the Auth service's `/internal/admin/*` and Keycloak's Admin REST API, restricted to the
+  groups under a managed path and to an allow-list of e-mail domains for new accounts.
+- **Sign-in history**: every session, with how it ended, reported by the Auth service to the API
+  through a transactional outbox ([session-ended contract](docs/auth/session-ended-contract.md)).
+- **A portal switcher** fed by `GET /api/v1/me/portals`, and the Auth service's cross-portal
+  [hand-off](docs/auth/handoff.md), `/auth/no-access` page and Pub/Sub `/auth/events` push (all
+  off, or inert, until configured).
+- **One pagination standard** (count left, pages middle, Rows right; 20 by default; 10/20/50/100;
+  remembered per table) on every paged list.
+- **A "What's new" feature spotlight**: shows each user a new feature once, acknowledged
+  server-side. See [docs/whats-new.md](docs/whats-new.md).
+- **Two clouds, one switch**: `CLOUD_PROVIDER=gcp|azure` selects the secrets provider and which
+  `infra/` tree deploys (Terraform for GCP, Bicep for Azure).
+- **A real quality gate**: warnings as errors, format check, ESLint, unit, integration and
+  architecture tests, Playwright, SonarQube, Gitleaks, CodeQL, dependency and image scanning.
+- **The agentic harness**: hooks and the `/spec`, `/task`, `/implement`, `/qa`, `/review`,
+  `/pre-push`, `/quality-gate`, `/new-migration` and `/sync` commands, all committed.
+- **A written process**: [workflow](docs/workflow.md), [Definition of Done](docs/definition-of-done.md),
+  [architecture guide](docs/architecture.md), [onboarding](docs/onboarding.md).
 
 ## Repository map
 
 ```
 .
-├── CLAUDE.md              project context for Claude Code — read this first
-├── CONTRIBUTING.md        setup, branch/PR flow, the gate, the commit convention
-├── CHANGELOG.md           what changed, written for the upgrader, + the release convention
-├── LICENSE                all rights reserved; the licence choice is pending — see below
-├── SECURITY.md            supported versions and the private vulnerability-reporting path
-├── CODE_OF_CONDUCT.md     Contributor Covenant (enforcement contact needs filling in)
-├── .claude/               committed agentic harness: hooks, commands, standards, agents
-├── .mcp.json              MCP server configuration
-├── .env.example           every environment variable, what it is for, whether it is required
-├── .gitattributes         line-ending normalisation — keeps the format gate and the hooks working
-├── docker-compose.yml     the whole stack in one command
-├── sonar-project.properties · SonarQube.Analysis.xml · sonar-project-frontend.properties
-│                          analysis settings, shared by CI and the local pre-push hook
-├── .trivyignore.yaml      image-scan allowlist; every entry needs a reason and an expiry
-├── .vscode/               recommended extensions and settings that match .editorconfig
-├── scripts/
-│   └── derive.sh          regenerates the two single-stack repositories (ADR-0011)
+├── README.md · CLAUDE.md · CONTRIBUTING.md · CHANGELOG.md · SECURITY.md   start here
+├── docker-compose.yml     the whole stack: db, redis, keycloak, migrate, auth-migrate, auth, api, web
+├── .env.example           every environment variable, what it does, whether it is required
 ├── src/
-│   ├── backend/           .NET 10 solution (5 source projects, 3 test projects)
-│   └── frontend/          Nx workspace (apps/web, apps/web-e2e, libs/*)
+│   ├── backend/           .NET 10 solution
+│   │   ├── src/           Domain · Application · Contracts · Infrastructure · Api · Auth
+│   │   └── tests/         Unit · Integration · Architecture · Auth.Tests
+│   └── frontend/          Nx workspace
+│       ├── apps/          web (the SPA), web-e2e (Playwright + accessibility)
+│       ├── libs/          auth · data-access · shared · shell · feature-items (sample)
+│       └── docker/        nginx gateway profiles and container start-up scripts
 ├── docs/
-│   ├── adr/               architecture decision records (+ template)
-│   ├── specs/             feature specs (+ template)
-│   ├── incidents/         incident reports (+ template and when to write one)
+│   ├── auth/              how sign-in works, setup, troubleshooting, the contract
+│   ├── adr/               architecture decision records
 │   ├── api/               how the OpenAPI contract is produced and consumed
-│   ├── handoff/           session handoffs written by the Stop hook
-│   ├── assets/            images referenced by the docs
-│   ├── architecture.md    every layer and library, and why each boundary exists
-│   ├── whats-new.md       the feature-spotlight module, end to end
-│   ├── upgrading.md       pulling boilerplate improvements into a project that cloned it
-│   ├── onboarding.md      Day-1 checklist
-│   ├── workflow.md        Spec → Plan → Execute → Verify → Review, with diagrams
-│   └── definition-of-done.md
-├── .github/
-│   ├── workflows/         backend-ci · frontend-ci · supply-chain · deploy (+ its reusable job)
-│   ├── ISSUE_TEMPLATE/    issue forms
-│   ├── pull_request_template.md   embeds the Definition of Done checklist
-│   ├── dependabot.yml     NuGet · npm · GitHub Actions · Docker base images
-│   ├── CODEOWNERS         path-scoped review ownership (handles are placeholders)
-│   └── gitleaks.toml      secret-scanning config; extends the default ruleset
-└── infra/
-    ├── gcp/               Terraform: Cloud Run, Cloud SQL, Memorystore, Secret Manager
-    └── azure/             Bicep: Container Apps, Azure SQL, Cache for Redis, Key Vault
+│   ├── specs/ · incidents/ · handoff/
+│   └── architecture.md · onboarding.md · workflow.md · upgrading.md · definition-of-done.md
+├── infra/
+│   ├── keycloak/          the DEV-ONLY realm the local stack imports
+│   ├── gcp/               Terraform: Cloud Run (API), Cloud SQL, Memorystore, Secret Manager
+│   └── azure/             Bicep: Container Apps (API), Azure SQL, Cache for Redis, Key Vault
+├── .claude/               agents, commands, hooks, standards, templates
+├── .github/workflows/     backend-ci · frontend-ci · supply-chain · deploy
+└── scripts/               derive.sh (builds the single-stack repositories) · generate-openapi
 ```
+
+## Common tasks
+
+### Add an endpoint with a policy
+
+Every controller declares who may call it. Copy `ItemsController`.
+
+```csharp
+[ApiController]
+[Authorize(Policy = Policies.ReadAccess)]          // the class default: any seat, or items:read
+[Route("api/v1/widgets")]
+public sealed class WidgetsController : ControllerBase
+{
+    [HttpGet] public async Task<IActionResult> List(...) { ... }
+
+    [HttpPost]
+    [Authorize(Policy = Policies.WriteAccess)]     // narrower: editor, admin, or items:write
+    public async Task<IActionResult> Create(...) { ... }
+}
+```
+
+A controller with no `[Authorize]` and no `[AllowAnonymous]` fails an architecture test, and the
+API's fallback policy denies anything that slips through. Then run
+`./scripts/generate-openapi.sh` and `npm run generate:api` (or `/sync`) so the contract and
+the frontend types follow.
+
+### Add a permission
+
+Add the Keycloak client role, add it to `Permissions` and `Permissions.All`, give it a policy,
+and map it in `libs/auth/src/lib/roles.ts`. The six steps are in
+[docs/auth/setup.md](docs/auth/setup.md#4-roles-and-permissions-end-to-end).
+
+### Add a page with a capability guard
+
+```ts
+// apps/web/src/app/app.routes.ts, inside the authGuard group
+{
+  path: 'widgets/new',
+  loadComponent: () => import('@aj-boilerplate/feature-widgets').then((m) => m.WidgetFormPage),
+  canActivate: [capabilityGuard('canCreate')],
+},
+```
+
+Add a nav entry with `requiredCapability: 'canCreate'` in `libs/shell/src/lib/nav-config.ts`. The
+guard is a UX convenience; the API's policy is the real control. `libs/feature-items` is the worked
+example.
+
+### Add a migration
+
+Prefer the `/new-migration` command. It reviews the generated SQL before anything is applied.
+The rules (expand, migrate, contract) are in [src/backend/README.md](src/backend/README.md).
+
+## Troubleshooting
+
+| Symptom | Likely cause and fix |
+|---|---|
+| `docker compose up` stalls at `db`, or `db` is unhealthy | **Stale SQL volume** from an older checkout with another `sa` password. `docker compose down -v` and start again. |
+| "port is already allocated" | Set `WEB_PORT`, `API_PORT`, `KEYCLOAK_PORT`, `DB_PORT` or `REDIS_PORT` in `.env`. Do not run the per-stack compose files alongside the root one. |
+| `auth`/`api` waiting a long time | Keycloak is still starting (first run imports the realm). `docker compose logs keycloak`. |
+| Redirected to `/login` in a loop, or no session cookie | Open **`http://localhost:4200`**, not `127.0.0.1`. Locally the cookie is `app_sid` over plain http; see [troubleshooting](docs/auth/troubleshooting.md). |
+| Signed in, then every API call is 401 | The API's `Keycloak__ClientId` must equal the Auth service's `Auth__Portal__ClientId`. |
+| "No access" page for everyone | The user has no role on the app's Keycloak client, or the client id is wrong. |
+
+More in [docs/auth/troubleshooting.md](docs/auth/troubleshooting.md).
+
+## Making it yours
+
+1. **Rename .NET.** `AjBoilerplate` everywhere: the six project folders under `src/backend/src/`
+   (including `AjBoilerplate.Auth`), the four under `src/backend/tests/`, `AjBoilerplate.slnx`,
+   namespaces, `RootNamespace`/`AssemblyName`, the `sonar.projectKey`, and the Auth service's
+   Dockerfile paths in `docker-compose.yml`.
+2. **Rename Nx.** The `@aj-boilerplate` scope in `tsconfig.base.json`, every library
+   `package.json`/`project.json`, and the imports.
+3. **Delete the sample.** `Item` end to end: domain, handlers, DTOs, EF configuration, the
+   `Items` table in `InitialCreate`, the controller, OpenAPI paths, `generated.ts`/`types.ts`
+   entries, `libs/feature-items`, and its tests. Keep the architecture tests and the `Features`
+   module.
+4. **Pick your auth provider.** Outside USP: keep `AUTH_PROVIDER=embedded`, then follow
+   [setup, section 2](docs/auth/setup.md#2-real-entra-id) (Entra app registration, a Keycloak
+   client, secrets). Inside Al Jazeera USP: set `AUTH_PROVIDER=usp`, do not deploy the Auth
+   service, and follow [section 3](docs/auth/setup.md#3-onboarding-into-usp-auth_providerusp).
+   Replace the seats and permissions in `Permissions`, `ApplicationRoles` and `libs/auth/.../roles.ts`
+   with your own model, and update `infra/keycloak/realm-aj-boilerplate.json` to match.
+5. **Pick your cloud.** Set `CLOUD_PROVIDER`, configure a remote state backend and your variables,
+   and delete the `infra/` tree you do not use. `infra/gcp` provisions the API, its database, Redis,
+   secrets, the Auth service and the web container; `infra/azure` provisions the API side only, and
+   Keycloak is an existing server on both, so it is not deployed.
+6. **Docs.** Replace this `README.md`, fill in `src/frontend/DESIGN.md` before any UI work, and
+   continue the ADR series at `0013` (or delete ours and start at `0001`).
+7. **Remove `.claude/` files you do not use**, and keep the hooks that protect secrets.
 
 ## How work flows here
 

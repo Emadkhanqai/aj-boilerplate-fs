@@ -18,7 +18,30 @@ FROM nginx:alpine AS runtime
 RUN apk upgrade --no-cache
 
 COPY --from=build /src/dist/apps/web/browser /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# nginx configuration. The official image renders /etc/nginx/templates/*.template with envsubst
+# into conf.d at start-up; `docker/16-nginx-profile.sh` runs just before that and copies ONE of the
+# three profiles in /etc/nginx/profiles into place, chosen by AUTH_MODE / AUTH_PROVIDER.
+COPY docker/nginx/embedded.conf.template docker/nginx/usp.conf.template docker/nginx/dev.conf.template /etc/nginx/profiles/
+COPY docker/nginx/snippets/ /etc/nginx/snippets/
+# The two ways the embedded profile reaches the API and the Auth service (UPSTREAM_AUTH), and the njs
+# that mints Google ID tokens for the Cloud Run one. 16-nginx-profile.sh renders one variant.
+COPY docker/nginx/upstream/ /etc/nginx/upstream-profiles/
+COPY docker/njs/token.js /etc/nginx/njs/token.js
+COPY docker/nginx/pages/gateway-pages.css /usr/share/nginx/gateway/gateway-pages.css
+COPY docker/16-nginx-profile.sh /docker-entrypoint.d/16-nginx-profile.sh
 COPY docker/40-env.sh /docker-entrypoint.d/40-env.sh
-RUN chmod +x /docker-entrypoint.d/40-env.sh
+RUN chmod +x /docker-entrypoint.d/16-nginx-profile.sh /docker-entrypoint.d/40-env.sh
+
+# Runtime settings (all overridable with `docker run -e`):
+#   AUTH_MODE       gateway | dev       what the SPA does (env.js); `dev` is the role picker, local only
+#   AUTH_PROVIDER   embedded | usp      who runs the gate: this container, or USP's shared gateway
+#   API_UPSTREAM    where /api/ goes    (embedded and dev profiles)
+#   AUTH_UPSTREAM   the Auth service    (embedded profile)
+#   UPSTREAM_AUTH   none | cloud-run-id-token   how the two upstreams above are reached (embedded profile)
+ENV AUTH_MODE=gateway \
+    AUTH_PROVIDER=embedded \
+    API_UPSTREAM=http://api:8080 \
+    AUTH_UPSTREAM=http://auth:8080 \
+    NGINX_ENVSUBST_FILTER="^(API_UPSTREAM|AUTH_UPSTREAM)$"
 EXPOSE 80

@@ -1,0 +1,6 @@
+# Readiness. In this mode there is nothing to wait for, so it answers like /healthz.
+location = /readyz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+}

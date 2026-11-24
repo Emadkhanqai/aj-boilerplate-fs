@@ -1,21 +1,132 @@
 # Infrastructure — Google Cloud (Terraform)
 
-Provisions the API and everything it depends on. The Azure tree
-([`infra/azure/`](../azure/README.md)) provisions the same logical shape, so the application
-runs unchanged on either provider — see [ADR-0002](../../docs/adr/0002-dual-cloud-provider-behind-one-switch.md).
+Provisions the API, the Auth service and the web gateway, and everything they depend on. The
+Azure tree ([`infra/azure/`](../azure/README.md)) provisions the API only; **this is the only tree
+that deploys the Auth service and the web container.** See
+[ADR-0002](../../docs/adr/0002-dual-cloud-provider-behind-one-switch.md) for the provider switch and
+[ADR-0012](../../docs/adr/0012-gateway-session-auth.md) for the sign-in model.
 
 | Resource | What it is for |
 |---|---|
-| Cloud Run | The API |
-| Cloud SQL for SQL Server | The database — private IP only |
-| Memorystore for Redis | Distributed cache |
-| Secret Manager | The connection string the API reads at startup |
-| Artifact Registry | The container image Cloud Run runs |
-| Serverless VPC Access connector | Lets Cloud Run reach the private database and cache |
+| Cloud Run service `web` | The SPA and the nginx gateway. The only thing a browser reaches |
+| Cloud Run service `auth` | The Auth service: sign-in, sessions, the gateway's `auth_request` |
+| Cloud Run job `auth-migrate` | Applies the Auth service's EF Core migrations, before each Auth roll-out |
+| Cloud Run service `api` | The API |
+| Cloud SQL for SQL Server | One instance, two databases (the API's and the Auth service's), private IP only |
+| Memorystore for Redis | Distributed cache and the Auth service's session cache |
+| Secret Manager | Every credential, read by reference. Nothing is written into an environment block |
+| Artifact Registry | The images Cloud Run runs |
+| Serverless VPC Access connector | Lets `api`, `auth` and the job reach the private database and cache |
+| Service accounts | One each for `api`, `auth`, `auth-migrate`, `web` and CI, each reading only its own secrets |
 | Workload identity pool + provider | How CI authenticates, with no stored key |
+
+**Keycloak and the identity provider (Entra ID) are not deployed.** They are existing external
+services. This tree is given their addresses and client ids as variables and reads their client
+secrets from Secret Manager secrets you create first. It never creates, configures or changes
+either.
 
 This is a boilerplate, not a platform. It is deliberately small enough to read in one sitting.
 Extend it; do not treat it as complete.
+
+> **Not verified.** No `terraform apply`, no image build against a registry, no Cloud Run deployment
+> and no sign-in through the deployed gateway has been run for this tree. What was run, and what each
+> result does and does not show, is listed under [What is and is not verified](#what-is-and-is-not-verified).
+
+## How the pieces call each other
+
+```
+browser ──https──▶ web (nginx, public)
+                     │  auth_request  GET /auth/validate        X-Serverless-Authorization: Bearer <ID token for auth>
+                     ├────────────────────────────────────────▶ auth   (IAM: only web's service account may invoke)
+                     │  /api/  + Authorization: Bearer <Keycloak JWT>
+                     │                                          X-Serverless-Authorization: Bearer <ID token for api>
+                     └────────────────────────────────────────▶ api    (IAM: only web's service account may invoke)
+auth ──▶ identity provider, Keycloak (external)      auth, api ──▶ Cloud SQL, Memorystore (private)
+auth ──▶ api   POST /api/integration/auth-backend/session-ended      only when auth_session_events_enabled
+                X-Serverless-Authorization + Authorization: Bearer <ID token for api's origin>
+```
+
+**Session-ended events (`auth_session_events_enabled`).** The Auth service reports each session's end to the API so the
+sign-in history can say how it ended. The API's invoker list is `web` alone, so this hop carries a Google ID token and no
+shared key: the Auth service's account gets `roles/run.invoker` on the API, and the API accepts that one account for that one
+origin (`Integration__AuthBackend__Audience`, `AllowedCallerEmail`). A key-only call would be refused by Cloud Run before the
+application read it. Off, nothing is queued.
+
+**Not wired here: the API calling the Auth service's `/internal/admin/*`** (the Users & roles page). That hop
+needs a Google ID token for the Auth service in `X-Serverless-Authorization`, because the Auth service's invoker list is `web`
+alone, and the API's admin client sends only `X-Admin-Api-Key`. So `AuthService__*` is deliberately NOT set on the API
+here: without it the page answers 503 with a message, instead of a 403 from the platform that reads as a permissions problem.
+Closing it means adding an ID-token header to `AuthServiceIdentityAdministration` and an invoker grant; that is future work, and
+nothing in this tree has been applied to prove it either way. The admin client, group paths and domain allow-list variables
+(`auth_admin_*`) are there so the Auth side is ready.
+**Service to service.** `api` and `auth` are not publicly invokable. Cloud Run answers 403 to any
+caller without a Google ID token for an identity in their invoker list, which is `web`'s service
+account and nobody else (the deploy's read-back fails if `allUsers` or `allAuthenticatedUsers` is
+there). The gateway gets those tokens from the metadata server, one per target, and sends each as
+`X-Serverless-Authorization`. That header and not `Authorization`, because Cloud Run strips it and
+leaves `Authorization` free for the Keycloak JWT the API needs. The mechanism is
+`UPSTREAM_AUTH=cloud-run-id-token` in the web image (`src/frontend/docker/njs/token.js` and
+`src/frontend/docker/nginx/upstream/cloud-run/`); the default `none` is unchanged behaviour for
+compose and for any platform that does not need it.
+
+Why IAM and not `ingress = internal`: a Cloud Run service reaches another's `.run.app` address over
+Google's public front end, which `internal` ingress refuses unless the caller's egress is routed
+through the VPC with Private Google Access. That needs `ALL_TRAFFIC` egress on the gateway and a
+subnet setting this tree does not own, and an unrouted `ALL_TRAFFIC` hangs rather than fails (there
+is no Cloud NAT here). IAM needs neither and fails closed. Adding `internal` ingress later is a
+hardening step on top of the IAM binding, never a replacement for it.
+
+**Costs and limits of that choice, stated so nobody finds them in production.**
+
+- `web` runs with **CPU always allocated and at least one instance** (`cpu_idle = false`,
+  `web_min_instances >= 1`). The ID tokens are refreshed by a timer inside nginx, and a throttled
+  instance runs no timers: after an idle hour its tokens would have expired and the first request
+  back would be answered 403 by Cloud Run IAM, which reads as "not signed in". The instance is
+  billed while idle. `web_min_instances` is validated to stay at or above 1.
+- The gateway's rate limits key on the peer address. Behind Cloud Run that is Google's front end, so
+  every user shares one bucket until `set_real_ip_from` is configured for it (see
+  [troubleshooting](../../docs/auth/troubleshooting.md)).
+- The Auth service's in-process sweeper runs on every instance. That it is safe with more than one
+  instance running was not tested.
+
+## What you create first (the operator's part)
+
+Terraform reads these by name; it cannot create them, because their values come from registrations
+this tree does not own. A missing one fails the plan naming the secret.
+
+1. **Identity provider app registration** (Entra ID: *App registrations*, platform **Web**). Redirect
+   URI: **`<public origin>/auth/callback`**, exactly. The public origin is the `web_url` output, or
+   `public_origin` when a custom domain or load balancer is in front. API permission: Microsoft
+   Graph delegated `User.Read`. Details: [docs/auth/setup.md, section 2a](../../docs/auth/setup.md#2a-entra-id-app-registration).
+2. **Keycloak** (existing server): the portal's confidential client with token exchange enabled, its
+   client roles, and an identity provider (alias `oidc` by default) that trusts the registration
+   above. Details: [section 2b](../../docs/auth/setup.md#2b-keycloak). The client id is
+   `keycloak_portal_client_id`; the API accepts only tokens minted for it.
+3. **Two Secret Manager secrets with one version each**, in the project, per environment:
+
+   | Secret id (default) | Holds | Override with |
+   |---|---|---|
+   | `<name_prefix>-<environment>-entra-client-secret` | the app registration's client secret | `entra_client_secret_name` |
+   | `<name_prefix>-<environment>-keycloak-client-secret` | the portal client's secret | `keycloak_client_secret_name` |
+
+   ```bash
+   printf '%s' "$VALUE" | gcloud secrets create <id> --project=<project> --replication-policy=automatic --data-file=-
+   ```
+
+   Read the value from where you hold it; never type it into a command that lands in shell history
+   and never put it in a file in this repository.
+
+Two more optional secrets, for the user-admin screens: when `auth_admin_keycloak_client_id` is set, create
+the admin client's secret the same way (`<environment prefix>-keycloak-admin-client-secret`, or the name in
+`auth_admin_keycloak_client_secret_name`). That client is a Keycloak client with a service account holding
+`view-users`, `query-users`, `query-groups` and `manage-users`, and **not** the portal client.
+
+Everything else the services need is generated by this tree and stored in Secret Manager without
+ever being an output: the Auth database login and connection string, the session encryption key
+(rotating it signs every user out) and, only when `auth_admin_api_key_enabled` is true, the admin
+API key.
+
+---
 
 ---
 
@@ -49,6 +160,25 @@ terraform output ci_service_account           # → GCP_SERVICE_ACCOUNT secret
 
 After that, CI runs every subsequent apply with no stored key.
 
+**The first apply of this tree needs more than CI's roles.** CI's roles are deliberately narrow and do
+not include creating service accounts or changing project IAM, and this tree creates five service
+accounts and their bindings. So the first apply, and any later apply that adds an identity, is a local
+apply by an administrator, the same bootstrap as above. Do not widen CI to avoid it.
+
+**Images before services, and why `terraform apply` alone is not enough on a new environment.** Cloud
+Run will not create a service whose image does not exist, and the registry that holds the image is
+created by this tree. The deploy workflow therefore applies the registry first (`-target`), builds and
+pushes `auth`, `auth-migrate` and `web`, runs the migration job, and only then applies everything.
+Locally, on a new environment, do the same:
+
+```bash
+terraform apply -target=google_project_service.required -target=google_artifact_registry_repository.containers
+# build and push the three images (see "The images" below), then:
+terraform apply -target=google_cloud_run_v2_job.auth_migrate
+gcloud run jobs execute <prefix>-<environment>-auth-migrate --region=<region> --wait
+terraform apply
+```
+
 ---
 
 ## Plan and apply
@@ -76,6 +206,44 @@ from repository variables, and there is no `.tfvars` file at all.
 
 ---
 
+## The images and the deploy workflow
+
+Three images are built from the commit being deployed:
+
+| Image | Built from | Notes |
+|---|---|---|
+| `auth` | `src/backend/src/AjBoilerplate.Auth/Dockerfile`, context `src/backend` | the `runtime` stage |
+| `auth-migrate` | the same Dockerfile, `--target build` | the only stage that carries `dotnet-ef`; the runtime image cannot migrate |
+| `web` | `src/frontend/Dockerfile` | the SPA and the nginx gateway |
+
+The API image is **not** built by the workflow: `API_IMAGE` is a variable you set, as before.
+
+`.github/workflows/deploy-environment.yml` (the `gcp` job) rolls an environment out in this order,
+and the order is the design:
+
+1. **registry**, so the images have somewhere to go;
+2. **images** built and pushed, and their digests kept;
+3. **`auth-migrate`** updated and executed, and the deploy waits for it. A new Auth revision must
+   never start against a schema it has not seen. The API's migrations are applied separately, by the
+   `migrate` job, from the bundle Backend CI builds;
+4. **one plan and one apply.** Terraform's graph puts `api` and `auth` first and `web` last, because
+   `web` names both their addresses. The gateway, which every portal path crosses, goes out after what
+   sits behind it, so a fault in it is the only thing that changed;
+5. **read-back**: `scripts/readback.sh` reads each live service and fails the deployment unless
+   ingress, egress and the VPC connector are as intended, the running revision's image digest equals
+   the digest pushed in step 2 (`auth`, `web`), and `api` and `auth` have no `allUsers` or
+   `allAuthenticatedUsers` invoker. It prints what it found, including `maxScale`, so the log holds
+   the quoted values.
+
+Repository (or environment) variables, none secret: `GCP_PROJECT_ID`, `GCP_REGION`, `TF_STATE_BUCKET`,
+`NAME_PREFIX`, `API_IMAGE`, `ENTRA_AUTHORITY`, `ENTRA_CLIENT_ID`, `KEYCLOAK_BASE_URL`, `KEYCLOAK_REALM`,
+`KEYCLOAK_PORTAL_CLIENT_ID`; optional: `PUBLIC_ORIGIN`, `ENTRA_SCOPES`,
+`ENTRA_REQUEST_OWN_CLIENT_ID_SCOPE`, `ENTRA_CLIENT_SECRET_NAME`, `KEYCLOAK_SUBJECT_ISSUER`,
+`KEYCLOAK_ISSUER`, `KEYCLOAK_JWKS_URL`, `KEYCLOAK_CLIENT_SECRET_NAME`, `AUTH_ADMIN_API_KEY_ENABLED`.
+`NAME_PREFIX` must be set: the workflow derives the registry and job names from it.
+
+---
+
 ## Environments
 
 One configuration, three state prefixes: `dev`, `staging`, `prod`. The `environment` variable
@@ -100,6 +268,10 @@ Each environment needs its **own non-overlapping `connector_cidr`**. Two environ
 - **The federation is repository-scoped.** `attribute_condition` pins the pool provider to one
   `owner/repo`. Without it, any repository on GitHub could request a token for your project.
   Never relax it to a wildcard.
+- **The API and the Auth service accept no anonymous caller.** Their invoker list is the web service
+  account. `web` has `allUsers` because browsers must reach it; nginx authenticates every gated
+  request itself. Where policy forbids `allUsers`, set `web_allow_unauthenticated = false` and put a
+  load balancer in front.
 - **The database has no public IP.** `ipv4_enabled = false`, reachable only from the VPC.
   Turning it on "just to debug" defeats the design; use the Cloud SQL auth proxy instead.
 - **Secrets are never in this repository.** The SQL password is generated by Terraform, written
@@ -107,6 +279,31 @@ Each environment needs its **own non-overlapping `connector_cidr`**. Two environ
   variable file, and never in a log.
 - **CI's roles are deliberately narrow.** Widen them with a reason, never to `roles/owner` or
   `roles/editor`.
+
+---
+
+## What is and is not verified
+
+Run for this tree, with what each result does and does not show:
+
+| Check | Result | Shows | Does not show |
+|---|---|---|---|
+| `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate` (1.9.8, provider ~> 6) | pass; `fmt` and `validate` each failed on a planted error | the configuration parses and type-checks | that any resource can be created |
+| `actionlint` on the three workflows | pass, with a planted error failing | the YAML and expressions are well formed | that any step works on a runner |
+| `nginx -t` on the three profiles, in the real image's nginx | pass | the templates render and parse | |
+| The gateway in `cloud-run-id-token` mode against local stubs (a TLS upstream that returns 403 without the right `X-Serverless-Authorization`, a stub metadata server) | both hops carried the right token, `/readyz` held 503 until both existed, an untrusted upstream certificate and an `http://` upstream were refused | the njs, the headers and the TLS verification behave as written | that Cloud Run IAM or the real metadata server accept it |
+| `scripts/readback.sh self-test` | pass, with a planted always-pass failing it | the checks can say no | that the field paths match what `gcloud` prints today |
+| `terraform fmt -check -recursive` and `validate` (1.9.8) after the session-ended and `auth_admin_*` variables were added | pass; `validate` failed on a planted undeclared variable and `fmt` on a planted misalignment, both in `auth.tf` | the new `dynamic "env"` blocks and locals type-check (`validate` takes no variable values, so the on and off branches are not separately exercised) | any plan or apply, or that the API accepts the Auth service's ID token |
+
+**Not run, and therefore not known:** `terraform plan` or `apply` against a project; any image build
+or push; the migration job (the `dotnet-ef` command and its working directory inside the `build`
+image, and whether 2 CPU and 2 GiB suffice); Cloud Run accepting the `X-Serverless-Authorization`
+header from nginx; the Auth service reaching Cloud SQL with `TrustServerCertificate=False` (the API's
+connection string uses the same setting, and whether Cloud SQL's server certificate validates there
+was not checked for either); the Auth service reaching Memorystore (it is plain Redis here, as for
+the API, with no TLS and no AUTH); an end-to-end sign-in; and the field paths the read-back assumes
+in `gcloud run services describe` output. Treat the first deployment as the first test of all of
+these, in a dev project.
 
 ---
 

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AjBoilerplate.Api.Identity;
 using AjBoilerplate.Application.Identity;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
 namespace AjBoilerplate.UnitTests.Identity;
@@ -38,15 +39,82 @@ public sealed class KeycloakRoleClaimsTransformationTests
     {
         // A token may carry more than one shape at once, and the mapped claim overlaps one of them.
         // Every source must contribute, and the overlap must collapse to a single canonical entry.
-        var roles = ExtractFrom(
-            new Claim("realm_access", """{"roles":["viewer"]}"""),
-            new Claim("resource_access", $$$"""{"{{{ConfiguredClientId}}}":{"roles":["editor"]}}"""),
-            new Claim(ClaimTypes.Role, "editor"),
-            new Claim(ClaimTypes.Role, "admin"));
+        // Realm roles are one of the sources only because the caller opted in.
+        var roles = KeycloakRoleClaimsTransformation.ExtractApplicationRoles(
+            Principal(
+                new Claim("realm_access", """{"roles":["viewer"]}"""),
+                new Claim("resource_access", $$$"""{"{{{ConfiguredClientId}}}":{"roles":["editor"]}}"""),
+                new Claim(ClaimTypes.Role, "editor"),
+                new Claim(ClaimTypes.Role, "admin")),
+            ConfiguredClientId,
+            honourRealmRoles: true);
 
         Assert.Equal(
             new[] { ApplicationRoles.Viewer, ApplicationRoles.Editor, ApplicationRoles.Admin },
             roles);
+    }
+
+    [Fact]
+    public void Realm_roles_are_not_seats_unless_the_deployment_opts_in() =>
+        // A shared realm's realm-level "admin" belongs to whichever application granted it. By default
+        // only this client's own roles count, so it must not become this portal's administrative tier.
+        Assert.Empty(ExtractFrom(new Claim("realm_access", """{"roles":["admin","editor","viewer"]}""")));
+
+    [Fact]
+    public void Another_clients_roles_in_resource_access_are_not_seats() =>
+        Assert.Empty(ExtractFrom(new Claim("resource_access", """{"someone-else":{"roles":["admin"]}}""")));
+
+    [Fact]
+    public void A_permission_is_projected_to_its_own_claim_type_and_never_becomes_a_seat()
+    {
+        var principal = Principal(
+            new Claim(ClaimTypes.Role, "viewer"),
+            new Claim(ClaimTypes.Role, "items:write"),
+            new Claim(ClaimTypes.Role, "ADMIN:Manage"));
+
+        Assert.Equal(
+            new[] { Permissions.ItemsWrite, Permissions.AdminManage },
+            KeycloakRoleClaimsTransformation.ExtractPermissions(principal, ConfiguredClientId));
+
+        // The seat list sees the viewer and nothing else: "items:write" is not a seat.
+        Assert.Equal(
+            new[] { ApplicationRoles.Viewer },
+            KeycloakRoleClaimsTransformation.ExtractApplicationRoles(principal, ConfiguredClientId));
+    }
+
+    [Fact]
+    public void An_unknown_permission_like_string_is_dropped_from_both_vocabularies()
+    {
+        var principal = Principal(new Claim(ClaimTypes.Role, "items:delete"), new Claim(ClaimTypes.Role, "superuser:all"));
+
+        Assert.Empty(KeycloakRoleClaimsTransformation.ExtractPermissions(principal, ConfiguredClientId));
+        Assert.Empty(KeycloakRoleClaimsTransformation.ExtractApplicationRoles(principal, ConfiguredClientId));
+    }
+
+    [Fact]
+    public async Task Transforming_writes_permissions_to_the_permission_claim_type_once()
+    {
+        var principal = Principal(new Claim(ClaimTypes.Role, "items:read"));
+        var transformation = Transformation();
+
+        await transformation.TransformAsync(principal);
+        await transformation.TransformAsync(principal);
+
+        Assert.Equal(
+            new[] { Permissions.ItemsRead },
+            principal.FindAll(PermissionClaims.ClaimType).Select(c => c.Value).ToList());
+
+        // A permission never lands on the seat claim as a canonical value; only the raw string the
+        // handler put there is left, which no seat consumer recognises.
+        Assert.DoesNotContain(ApplicationRoles.Admin, RoleClaimsOf(principal));
+    }
+
+    [Fact]
+    public async Task A_caller_with_a_permission_and_no_seat_has_no_effective_role()
+    {
+        var principal = await Transformation().TransformAsync(Principal(new Claim(ClaimTypes.Role, "admin:manage")));
+
+        Assert.Null(ApplicationRoles.Effective(RoleClaimsOf(principal)));
     }
 
     [Fact]
@@ -102,7 +170,7 @@ public sealed class KeycloakRoleClaimsTransformationTests
         new(new ClaimsIdentity(claims, "TestBearer"));
 
     private static KeycloakRoleClaimsTransformation Transformation() =>
-        new(Options.Create(new KeycloakOptions { ClientId = ConfiguredClientId }));
+        new(Options.Create(new KeycloakOptions { ClientId = ConfiguredClientId }), NullLogger<KeycloakRoleClaimsTransformation>.Instance);
 
     private static async Task<List<string>> TransformedRoleClaimsOf(ClaimsPrincipal principal) =>
         RoleClaimsOf(await Transformation().TransformAsync(principal));

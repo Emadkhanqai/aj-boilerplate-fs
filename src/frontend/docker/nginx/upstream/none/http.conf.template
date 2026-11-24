@@ -1,0 +1,2 @@
+# UPSTREAM_AUTH=none (default): nothing at http level. The three hops proxy to a plain address with
+# the browser's Host, exactly as the gateway always has.

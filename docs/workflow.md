@@ -489,7 +489,7 @@ plus a new file under `src/backend/src/AjBoilerplate.Infrastructure/Persistence/
 → `dotnet test src/backend/tests/AjBoilerplate.IntegrationTests --filter "FullyQualifiedName~ItemsApiTests"`
 
 **6 · Regenerate the API types and extend the typed service** — depends on task 5.
-`src/frontend/libs/data-access/api-types/src/lib/types.ts` (generated),
+`src/frontend/libs/data-access/api-types/src/lib/generated.ts` (generated),
 `src/frontend/libs/data-access/api-client/src/lib/items-api.service.ts`
 → `cd src/frontend && npm run typecheck`
 
@@ -646,7 +646,7 @@ cd src/frontend
 npm run generate:api
 ```
 
-That rewrites `libs/data-access/api-types/src/lib/types.ts` from the live OpenAPI document. The
+That rewrites `libs/data-access/api-types/src/lib/generated.ts` from the committed `docs/api/openapi.json` (regenerate that first with `./scripts/generate-openapi.sh`). The
 diff in that file is the review signal that a contract moved. Never hand-edit it; if the output is
 wrong, the annotation on the server is wrong.
 

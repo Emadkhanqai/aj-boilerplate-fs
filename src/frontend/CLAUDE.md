@@ -10,16 +10,17 @@ Angular 21 · Nx monorepo · PrimeNG 21 · TanStack Query · Vitest · Playwrigh
 
 ```
 apps/
-  web/          the application: bootstrap, routes, design CSS, MSW mocks, public auth pages
+  web/          the application: bootstrap, routes, design CSS, MSW mocks, public pages (login, signing out, access denied)
   web-e2e/      Playwright journeys + the axe-core accessibility gate
 libs/
-  auth/                    session, guards, role -> capability map
+  auth/                    gateway/dev providers, guards, role -> capability map. NO tokens.
   data-access/api-types/   GENERATED from OpenAPI. Never hand-edited.
   data-access/api-client/  the only place that talks HTTP
   shared/ui/               presentational components, no feature knowledge
   shared/util/             formatters and helpers, no UI, no HTTP
   shell/                   sidebar, top bar, layout, nav config
   feature-items/           SAMPLE FEATURE — read it, copy it, delete it
+  feature-admin/           Users & roles and Sign-in history (canAdminister); API: AdminApiService
 ```
 
 **Import direction is enforced, not advisory:** `app → feature → shared`. `shared/*` never imports
@@ -41,9 +42,12 @@ moves to `shared/*` — it does not get imported sideways.
    the exception is scoped to that component, is explained in its class comment, and does not
    extend to accessibility (it carries its own `role="dialog"`/`aria-*` wiring). Do not cite it
    as precedent for anything else.
-4. **API types are generated.** `npm run generate:api` writes
-   `libs/data-access/api-types/src/lib/types.ts`. Never hand-edit it, and never re-declare a
+4. **API types are generated.** `npm run generate:api` reads `docs/api/openapi.json` and writes
+   `libs/data-access/api-types/src/lib/generated.ts`. Never hand-edit it, and never re-declare a
    backend DTO anywhere else. If you need a shape the API does not expose, change the API.
+   (`types.ts` beside it is hand-written on purpose: the generated shapes are all optional and lose
+   the `status` union, so the sample `Item` types and the `ApiResponse<T>` envelope live there until
+   the OpenAPI document declares required properties and enums.)
 5. **Versioned endpoints only** — `/api/v1/...`.
 6. **The `ApiResponse<T>` envelope is unwrapped centrally** by `envelopeInterceptor`. Feature code
    never touches `.data`. A `success: false` body becomes a thrown `ApiError` whatever the HTTP
@@ -57,8 +61,16 @@ moves to `shared/*` — it does not get imported sideways.
    way. `[innerHTML]`/`bypassSecurityTrust*` need an explicit review comment justifying them.
 10. **Components ≤ 300 lines.** Past that, split: a container that fetches and a presentational
     child, or extract pure logic into a `*-support.ts` file that can be unit-tested directly.
-11. **No secrets in the repo.** `src/environments/*` and `public/env.js` hold placeholders only;
-    real values arrive at runtime via `docker/40-env.sh`.
+11. **The browser holds no token.** Never store one in `localStorage`/`sessionStorage`, never attach an
+    `Authorization` header from the SPA (nginx overwrites it anyway), never add a browser-side OIDC
+    client. Sign-in is a full-page navigation to `/auth/login`; see `docs/auth/gateway-contract.md`.
+    The SPA learns the user only from `GET /api/v1/me`.
+12. **Only a 401 becomes a login redirect.** A 403 is a verdict and a 503/"access check unavailable"
+    is an outage; neither starts a sign-in. `403` with `X-Usp-Access: revoked` opens the
+    access-revoked dialog, whose only action is to sign out.
+13. **No secrets in the repo.** `src/environments/*` and `public/env.js` hold placeholders only. The
+    one runtime setting the SPA reads is `AUTH_MODE` (`gateway` | `dev`), written to `env.js` at
+    container start by `docker/40-env.sh`. `AUTH_PROVIDER` is read by nginx, not the browser.
 
 ## Bundle budgets
 
@@ -67,9 +79,13 @@ comments, so the reasoning lives here — change one, change this.
 
 | Budget | Warn / error | Measured today | Catches |
 |---|---|---|---|
-| `initial` | 1.2mb / 1.6mb | **886.85 kB** | A feature imported eagerly that should have been lazy |
-| `anyScript` | 900kb / 1.2mb | **667.39 kB** (largest chunk) | A single chunk ballooning — **including lazy ones**, which `initial` cannot see |
+| `initial` | 1.2mb / 1.6mb | **971.34 kB** | A feature imported eagerly that should have been lazy |
+| `anyScript` | 900kb / 1.2mb | **744.35 kB** (largest chunk) | A single chunk ballooning — **including lazy ones**, which `initial` cannot see |
 | `anyComponentStyle` | 10kb / 14kb | ~8 kB (the What's New modal) | A component carrying too much bespoke CSS — see ADR-0007 |
+
+The `initial` and largest-chunk figures rose by about 85 kB and 77 kB when the two blocking
+dialogs (access changed / access removed) moved into the root component: PrimeNG's `Dialog` is now
+in the initial chunk instead of a lazy one. Budgets were left alone; the warning is still ~24% away.
 
 Two things worth knowing before you touch these numbers:
 
@@ -103,13 +119,14 @@ a reload. Never retry a rejected write silently — that is how one user's chang
 ```sh
 npm install
 
-npx nx serve web                      # dev server against a real backend
-npx nx serve web --configuration=demo # offline: MSW-mocked API, no backend needed
+npx nx serve web                      # dev server; defaults to AUTH_MODE=dev (role picker), no proxy to an API
+npm run dev:offline                   # same as `nx serve web --configuration=demo`: MSW-mocked API, no backend
+docker compose up --build             # (repo root) the real thing: gateway, Auth service, Keycloak, API
 npx nx build web                      # production build
 npx nx run-many -t lint --all         # lint everything, incl. module boundaries
 npx nx run-many -t test --all         # all unit tests
 npx nx e2e web-e2e                    # Playwright journeys + axe (boots the demo build)
-npm run generate:api                  # regenerate API types from the backend's OpenAPI
+npm run generate:api                  # regenerate generated.ts from docs/api/openapi.json
 ```
 
 ## Definition of done

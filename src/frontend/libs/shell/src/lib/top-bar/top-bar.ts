@@ -1,7 +1,8 @@
 import { Component, ChangeDetectionStrategy, computed, inject, input, output } from '@angular/core';
 import { ButtonModule } from 'primeng/button';
-import { AuthService } from '@aj-boilerplate/auth';
+import { AuthService, highestRole } from '@aj-boilerplate/auth';
 import { LanguageService } from '@aj-boilerplate/shared/util';
+import { PortalSwitcherComponent } from '../portal-switcher/portal-switcher';
 
 /**
  * The authenticated shell's header: nav toggle (small screens), page title + breadcrumb, the
@@ -12,7 +13,7 @@ import { LanguageService } from '@aj-boilerplate/shared/util';
   selector: 'app-top-bar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonModule],
+  imports: [ButtonModule, PortalSwitcherComponent],
   template: `
     <header class="topbar">
       <p-button
@@ -32,6 +33,7 @@ import { LanguageService } from '@aj-boilerplate/shared/util';
       </div>
       <span class="spacer"></span>
       <div class="header-actions">
+        <app-portal-switcher />
         @if (primaryRole(); as role) {
           <span class="pill-role">{{ role }}</span>
         }
@@ -69,7 +71,7 @@ export class TopBarComponent {
   private readonly auth = inject(AuthService);
   private readonly language = inject(LanguageService);
 
-  readonly primaryRole = computed(() => this.auth.roles()[0]);
+  readonly primaryRole = computed(() => highestRole(this.auth.roles()));
 
   /** The language the toggle switches TO, labelled in its own script. */
   readonly otherLanguageLabel = computed(() => (this.language.current() === 'en' ? 'العربية' : 'English'));
