@@ -4,9 +4,21 @@
 #   cp .env.example .env      # then set MSSQL_SA_PASSWORD
 #   docker compose up --build
 #
-#   web  →  http://localhost:4200
-#   api  →  http://localhost:8080        (OpenAPI UI at /swagger)
+#   web  →  http://localhost:4200        sign in as admin / editor / viewer / noaccess
+#   api  →  http://localhost:8080        (OpenAPI UI at /swagger; needs a session, see below)
 #   health → http://localhost:8080/health/ready
+#   keycloak → http://localhost:8081     (admin console; DEV-ONLY credentials below)
+#
+# SIGN-IN, LOCALLY, WITH NO MICROSOFT TENANT
+# The real flow is: browser → nginx → Auth service → Entra ID → Keycloak token exchange → API
+# (docs/auth/gateway-contract.md). Locally one Keycloak container plays BOTH identity roles:
+#   · realm `aj-boilerplate`, client `aj-boilerplate-entra-sim` stands in for Entra ID (it is where
+#     the browser signs in and what the Auth service redeems the code against), and
+#   · client `aj-boilerplate-app` is the portal's own client that the Auth service exchanges to, whose
+#     tokens the API validates (azp check, seats and permissions as client roles).
+# The realm is infra/keycloak/realm-aj-boilerplate.json; every secret in it is DEV-ONLY. The users'
+# password is LOCAL_USER_PASSWORD below. Keycloak holds its data in the container, so a recreated
+# container starts from the committed realm again.
 #
 # Stop and remove the containers, keeping the database:   docker compose down
 # Remove the database volume too (destroys local data):   docker compose down -v
@@ -47,8 +59,8 @@
 # committed default password in a public repository is how a boilerplate teaches a bad habit.
 #
 # `.env` is loaded into the `api` container as well, so anything you add there —
-# `Keycloak__*`, `Otlp__Endpoint`, `Smtp__*` — reaches the application without editing this
-# file. The keys set under `environment:` below win over `.env`, because they describe this
+# `Otlp__Endpoint`, `Smtp__*` — reaches the application without editing this file. The `Keycloak__*`
+# keys set below describe the LOCAL realm and win over `.env`. The keys set under `environment:` below win over `.env`, because they describe this
 # topology (container hostnames, container ports) rather than your configuration.
 # =============================================================================
 
@@ -167,6 +179,8 @@ services:
         condition: service_started
       migrate:
         condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
     env_file:
       # Optional: the stack starts without a `.env` as long as MSSQL_SA_PASSWORD is
       # exported. Anything you do put there — Keycloak, OTLP, SMTP — reaches the app.
@@ -183,18 +197,165 @@ services:
       # root. Neither store is configured here, so `AddCloudSecrets` is a no-op and
       # configuration falls back to appsettings and these variables.
       CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gcp}
+      # The API accepts only Keycloak JWTs for THIS client (azp check); nginx injects them. `iss` is the
+      # address the BROWSER uses for Keycloak (KC_HOSTNAME below); the signing keys are fetched over the
+      # compose network. That http JWKS is allowed here only because the environment is Development.
+      Keycloak__ValidIssuer: http://localhost:${KEYCLOAK_PORT:-8081}/realms/aj-boilerplate
+      Keycloak__JwksUri: http://keycloak:8080/realms/aj-boilerplate/protocol/openid-connect/certs
+      Keycloak__ClientId: aj-boilerplate-app
+      Keycloak__RequireHttpsMetadata: 'false'
+      # Seats come from the app client's roles, exactly as in a deployed environment, so the realm
+      # roles Keycloak adds by default (default-roles-*, offline_access) are not read as seats.
+      Keycloak__HonourRealmRoles: 'false'
     ports:
       - '${API_PORT:-8080}:8080'
 
   # ---------------------------------------------------------------------------
-  # The SPA, built and served by nginx, with `/api/` proxied to the `api` service —
-  # same-origin, exactly as a deployed environment behind one hostname would be. That
-  # is why no CORS configuration is needed for this stack.
+  # Keycloak, standing in for BOTH Entra ID (sign-in) and the real Keycloak (token exchange).
+  # DEV-ONLY: `start-dev`, an in-container H2 database, http, and credentials that are committed
+  # defaults. Never point anything real at it and never reuse any value from here.
   #
-  # `AUTH_MODE=dev` renders the built-in role picker and contacts no identity provider.
-  # Set it to `oidc` in `.env`, along with the three `OIDC_*` values, to authenticate
-  # against a real authority; `docker/40-env.sh` rewrites `env.js` at container start,
-  # so no rebuild is needed to change it.
+  # Token exchange is the standard (internal-to-internal) one, enabled below. It needs the subject
+  # token's audience to include the requesting client; the realm's entra-sim client has an audience
+  # mapper for exactly that. That is also why `Auth__Keycloak__SubjectIssuer` is EMPTY on `auth`
+  # below: there is no `subject_issuer` identity provider in a one-realm setup.
+  #
+  # KC_HOSTNAME is the address the BROWSER uses and the `iss` of every token. The backchannel is
+  # dynamic so the Auth service can still reach it as `keycloak:8080` on the compose network.
+  # ---------------------------------------------------------------------------
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4.7
+    container_name: aj-keycloak
+    restart: unless-stopped
+    command: ['start-dev', '--import-realm']
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${LOCAL_KEYCLOAK_ADMIN_PASSWORD:-dev-only-keycloak-admin-never-reuse}
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_PORT:-8081}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: 'true'
+      KC_HEALTH_ENABLED: 'true'
+      KC_FEATURES: token-exchange-standard
+      # Substituted into infra/keycloak/realm-aj-boilerplate.json at import.
+      WEB_PORT: ${WEB_PORT:-4200}
+      LOCAL_APP_CLIENT_SECRET: ${LOCAL_APP_CLIENT_SECRET:-dev-only-app-client-secret-never-reuse}
+      LOCAL_ENTRA_SIM_CLIENT_SECRET: ${LOCAL_ENTRA_SIM_CLIENT_SECRET:-dev-only-entra-sim-secret-never-reuse}
+      LOCAL_USER_PASSWORD: ${LOCAL_USER_PASSWORD:-dev-only-password-never-reuse}
+    volumes:
+      - ./infra/keycloak/realm-aj-boilerplate.json:/opt/keycloak/data/import/realm-aj-boilerplate.json:ro
+    ports:
+      - '${KEYCLOAK_PORT:-8081}:8080'
+    healthcheck:
+      # The image has no curl; this speaks HTTP to the management port (9000) over bash's /dev/tcp (the image's /bin/sh is dash, which has none, hence the explicit bash).
+      test:
+        [
+          'CMD-SHELL',
+          'exec 3<>/dev/tcp/localhost/9000 && printf "GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "UP" <&3',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # One-shot: apply the Auth service's EF Core migrations (schema `auth`, database ${AUTH_DB_NAME}),
+  # then exit. Same shape as `migrate`: a discrete step, never an application-start-up side effect,
+  # and never EnsureCreated. It uses the Auth Dockerfile's `build` stage, which carries dotnet-ef.
+  # ---------------------------------------------------------------------------
+  auth-migrate:
+    build:
+      context: ./src/backend
+      dockerfile: src/AjBoilerplate.Auth/Dockerfile
+      target: build
+    container_name: aj-auth-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Read by the design-time factory (AuthDbContextFactory); `dotnet ef` never starts the host.
+      AUTH_DB_CONNECTION: 'Server=db;Database=${AUTH_DB_NAME:-AuthDb};User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;'
+    working_dir: /src
+    entrypoint: []
+    command: >
+      dotnet-ef database update
+      --project src/AjBoilerplate.Auth/AjBoilerplate.Auth.csproj
+      --startup-project src/AjBoilerplate.Auth/AjBoilerplate.Auth.csproj
+    restart: 'no'
+
+  # ---------------------------------------------------------------------------
+  # The Auth service. Not published on the host: the browser reaches it only through nginx
+  # (`/auth/*` on the web container), which also answers 404 for `/auth/validate` and `/internal/`.
+  # Named `auth` on purpose: AUTH_UPSTREAM defaults to http://auth:8080.
+  #
+  # Development + http cookies + http upstreams are LOCAL-ONLY: each is refused at start-up in any
+  # other environment unless explicitly accepted. The Entra defaults (scopes, subject issuer) are
+  # deliberately NOT overridden except SubjectIssuer, so the scopes run here are the staging ones.
+  # ---------------------------------------------------------------------------
+  auth:
+    build:
+      context: ./src/backend
+      dockerfile: src/AjBoilerplate.Auth/Dockerfile
+    container_name: aj-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      auth-migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__AuthDb: 'Server=db;Database=${AUTH_DB_NAME:-AuthDb};User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;'
+      ConnectionStrings__Redis: 'redis:6379'
+      Auth__PublicOrigin: http://localhost:${WEB_PORT:-4200}
+      # Plain http locally: the `__Host-` cookie prefix and the Secure flag need https.
+      Auth__Cookies__Secure: 'false'
+      # "Entra": the browser is sent to localhost, the service itself POSTs to the compose hostname.
+      Auth__Entra__Authority: http://localhost:${KEYCLOAK_PORT:-8081}/realms/aj-boilerplate
+      Auth__Entra__AuthorizeEndpointUrl: http://localhost:${KEYCLOAK_PORT:-8081}/realms/aj-boilerplate/protocol/openid-connect/auth
+      Auth__Entra__TokenEndpointUrl: http://keycloak:8080/realms/aj-boilerplate/protocol/openid-connect/token
+      Auth__Entra__ClientId: aj-boilerplate-entra-sim
+      Auth__Entra__ClientSecret: ${LOCAL_ENTRA_SIM_CLIENT_SECRET:-dev-only-entra-sim-secret-never-reuse}
+      # The token exchange. Empty SubjectIssuer = Keycloak-to-Keycloak (Development only); the token
+      # endpoint is derived from BaseUrl + Realm.
+      Auth__Keycloak__BaseUrl: http://keycloak:8080
+      Auth__Keycloak__Realm: aj-boilerplate
+      Auth__Keycloak__SubjectIssuer: ''
+      Auth__Portal__ClientId: aj-boilerplate-app
+      Auth__Portal__ClientSecret: ${LOCAL_APP_CLIENT_SECRET:-dev-only-app-client-secret-never-reuse}
+      # DEV-ONLY. Base64 of the 32 bytes "DEV-ONLY-never-reuse-this-key-00". Generate a real one with
+      # `openssl rand -base64 32` and keep it in the secrets provider.
+      Auth__Session__EncryptionKey: ${LOCAL_AUTH_SESSION_KEY:-REVWLU9OTFktbmV2ZXItcmV1c2UtdGhpcy1rZXktMDA=}
+      # Enables POST /internal/admin/users/{subject}/refresh (header X-Admin-Api-Key).
+      Auth__Admin__ApiKey: ${LOCAL_AUTH_ADMIN_API_KEY:-dev-only-auth-admin-key-never-reuse}
+    healthcheck:
+      # The runtime image has neither curl nor wget, so this speaks HTTP to /healthz (liveness:
+      # touches no dependency) over bash's /dev/tcp (the image's /bin/sh is dash, which has none, hence the explicit bash).
+      test:
+        [
+          'CMD',
+          'bash',
+          '-c',
+          'exec 3<>/dev/tcp/127.0.0.1/8080 && printf "GET /healthz HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n" >&3 && grep -q "200" <&3',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  # ---------------------------------------------------------------------------
+  # The SPA, built and served by nginx, which is also the auth gateway (AUTH_PROVIDER=embedded):
+  # every request to `/` and `/api/` goes through `auth_request` against the `auth` service, and
+  # `/api/` is proxied to the `api` service with the Keycloak JWT injected. Same-origin, exactly as a
+  # deployed environment behind one hostname would be, so no CORS configuration is needed.
+  #
+  # Role picker instead of sign-in (local UI work only; no API call carries a credential, so the
+  # gateway-mode API rejects them):
+  #     AUTH_MODE=dev docker compose up --build web
+  # `docker/40-env.sh` rewrites `env.js` at container start, so no rebuild is needed to switch.
   # ---------------------------------------------------------------------------
   web:
     build:
@@ -202,12 +363,15 @@ services:
     container_name: aj-web
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_started
+      auth:
+        condition: service_healthy
     environment:
-      AUTH_MODE: ${AUTH_MODE:-dev}
-      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
-      OIDC_AUTHORITY: ${OIDC_AUTHORITY:-}
-      OIDC_SCOPE: ${OIDC_SCOPE:-}
+      AUTH_MODE: ${AUTH_MODE:-gateway}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-embedded}
+      API_UPSTREAM: http://api:8080
+      AUTH_UPSTREAM: http://auth:8080
     ports:
       - '${WEB_PORT:-4200}:80'
 
