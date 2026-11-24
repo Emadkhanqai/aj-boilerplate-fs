@@ -132,7 +132,7 @@ public static class AuthenticationSetup
             throw new InvalidOperationException(
                 $"'{KeycloakOptions.SectionName}:{nameof(KeycloakOptions.JwksUri)}' is not an https URL, and this is not the Development environment. "
                 + "Signing keys fetched in plaintext can be substituted by anyone on the network path, which would let forged tokens through. "
-                + "Use the realm's https JWKS endpoint.");
+                + $"Use the realm's https JWKS endpoint. If this environment has a dated, written acceptance of plaintext transport, set '{KeycloakOptions.AllowInsecureJwksTransportKey}' to true.");
         }
 
         authBuilder.AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>

@@ -7,6 +7,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AjBoilerplate.UnitTests.Identity;
 
@@ -25,6 +27,44 @@ public sealed class AuthenticationSetupTests
     public void A_plaintext_JWKS_refuses_to_start_outside_Development() =>
         Assert.Contains("not an https URL", Assert.Throws<InvalidOperationException>(
             () => Compose(Production, Keycloak(jwks: Http))).Message);
+
+    [Fact]
+    public void A_plaintext_JWKS_names_the_opt_in_that_would_allow_it() =>
+        Assert.Contains(KeycloakOptions.AllowInsecureJwksTransportKey, Assert.Throws<InvalidOperationException>(
+            () => Compose(Production, Keycloak(jwks: Http))).Message);
+
+    [Fact]
+    public void A_plaintext_JWKS_starts_outside_Development_only_with_the_explicit_opt_in() =>
+        Compose(Production, Keycloak(jwks: Http, allowInsecureJwks: true));
+
+    [Fact]
+    public void The_opt_in_does_not_excuse_an_empty_JWKS() =>
+        Assert.Contains(KeycloakOptions.AllowDiscoveryFallbackKey, Assert.Throws<InvalidOperationException>(
+            () => Compose(Production, Keycloak(jwks: "", authority: "https://keycloak.example.com/realms/r", allowInsecureJwks: true))).Message);
+
+    [Fact]
+    public async Task An_accepted_plaintext_JWKS_logs_a_warning_naming_the_opt_in_on_every_start()
+    {
+        var log = new CapturingLogger<KeycloakSigningKeyProvider>();
+        var options = Options.Create(new KeycloakOptions { JwksUri = Http, AllowInsecureJwksTransport = true });
+        var provider = new KeycloakSigningKeyProvider(new EmptyJwksFactory(), options, log);
+
+        await provider.WarmUpAsync();
+
+        var warning = Assert.Single(log.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("plaintext"));
+        Assert.Contains(KeycloakOptions.AllowInsecureJwksTransportKey, warning.Message);
+    }
+
+    [Fact]
+    public async Task An_https_JWKS_logs_no_plaintext_warning()
+    {
+        var log = new CapturingLogger<KeycloakSigningKeyProvider>();
+        var provider = new KeycloakSigningKeyProvider(new EmptyJwksFactory(), Options.Create(new KeycloakOptions { JwksUri = Https }), log);
+
+        await provider.WarmUpAsync();
+
+        Assert.DoesNotContain(log.Entries, e => e.Message.Contains("plaintext"));
+    }
 
     [Fact]
     public void A_plaintext_JWKS_is_allowed_in_Development() =>
@@ -140,14 +180,41 @@ public sealed class AuthenticationSetupTests
     }
 
     private static Dictionary<string, string?> Keycloak(
-        string jwks, string authority = "", bool allowDiscovery = false) => new()
+        string jwks, string authority = "", bool allowDiscovery = false, bool allowInsecureJwks = false) => new()
         {
             ["Keycloak:ValidIssuer"] = "https://keycloak.internal/realms/r",
             ["Keycloak:ClientId"] = "my-api",
             ["Keycloak:JwksUri"] = jwks,
             ["Keycloak:Authority"] = authority,
             ["Keycloak:AllowDiscoveryFallback"] = allowDiscovery.ToString(),
+            ["Keycloak:AllowInsecureJwksTransport"] = allowInsecureJwks.ToString(),
         };
+
+    private sealed record LogEntry(LogLevel Level, string Message);
+
+    private sealed class CapturingLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            Entries.Add(new LogEntry(logLevel, formatter(state, exception)));
+    }
+
+    /// <summary>An HTTP client factory whose every request answers an empty key set, so a warm-up never leaves the process.</summary>
+    private sealed class EmptyJwksFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(new StubHandler());
+
+        private sealed class StubHandler : HttpMessageHandler
+        {
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+                Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"keys\":[]}") });
+        }
+    }
 
     private static readonly IHostEnvironment Production = new FakeEnvironment(Environments.Production);
 

@@ -66,10 +66,12 @@ public sealed class KeycloakSigningKeyProvider
     {
         if (_options.JwksUriIsInsecure)
         {
-            // Reachable only in Development: AuthenticationSetup refuses to start with this anywhere else.
+            // Outside Development this is reachable only with Keycloak:AllowInsecureJwksTransport=true.
             _logger.LogWarning(
-                "Keycloak JWKS is fetched over plaintext transport ({Scheme}); signing keys can be substituted on the network path. Development only.",
-                Uri.TryCreate(_options.JwksUri, UriKind.Absolute, out var jwks) ? jwks.Scheme : "unparsable");
+                "Keycloak JWKS is fetched over plaintext transport ({Scheme}); signing keys can be substituted on the network path. "
+                + "Allowed only in Development or with {OptInKey}=true.",
+                Uri.TryCreate(_options.JwksUri, UriKind.Absolute, out var jwks) ? jwks.Scheme : "unparsable",
+                KeycloakOptions.AllowInsecureJwksTransportKey);
         }
 
         var fetched = await FetchAsync();

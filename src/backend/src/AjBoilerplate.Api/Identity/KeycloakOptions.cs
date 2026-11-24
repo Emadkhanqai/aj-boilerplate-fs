@@ -76,12 +76,34 @@ public sealed class KeycloakOptions
         !string.IsNullOrWhiteSpace(JwksUri)
         && !(Uri.TryCreate(JwksUri, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps);
 
+    /// <summary>The configuration key behind <see cref="AllowInsecureJwksTransport"/>. As an environment
+    /// variable it is <c>Keycloak__AllowInsecureJwksTransport</c>.</summary>
+    public const string AllowInsecureJwksTransportKey = "Keycloak:AllowInsecureJwksTransport";
+
     /// <summary>
-    /// True when composition must be refused: a plaintext JWKS URI outside Development. A JWKS that
-    /// arrives in plaintext can be substituted by anyone on the network path, and a substituted
-    /// signing key means forged tokens accepted as genuine, for any role.
+    /// <b>The explicit, logged acceptance that lets an environment outside Development fetch its JWKS
+    /// over plaintext <c>http</c>.</b> Defaults to <c>false</c>. Ported from the CAD portal.
+    ///
+    /// <para>
+    /// A JWKS that arrives in plaintext can be substituted by anyone with network position on the
+    /// path, and a substituted signing key means forged tokens accepted as genuine, for any role.
+    /// Some deployments still have no https listener for the identity host (USP's GCP dev serves
+    /// Keycloak's JWKS over the internal network on http). Without this flag an http value that
+    /// travelled here by copy-paste stops the API starting; with it, the acceptance is explicit and
+    /// <see cref="KeycloakSigningKeyProvider.WarmUpAsync"/> logs a warning on every start-up.
+    /// Record the reason for setting it next to the value.
+    /// </para>
     /// </summary>
-    public bool RefusesInsecureJwksUri(bool isDevelopment) => JwksUriIsInsecure && !isDevelopment;
+    public bool AllowInsecureJwksTransport { get; init; }
+
+    /// <summary>
+    /// True when composition must be refused: a plaintext JWKS URI outside Development without
+    /// <see cref="AllowInsecureJwksTransport"/>. A JWKS that arrives in plaintext can be substituted
+    /// by anyone on the network path, and a substituted signing key means forged tokens accepted as
+    /// genuine, for any role.
+    /// </summary>
+    public bool RefusesInsecureJwksUri(bool isDevelopment) =>
+        JwksUriIsInsecure && !isDevelopment && !AllowInsecureJwksTransport;
 
     /// <summary>
     /// True when this configuration would silently degrade into the stall described on
