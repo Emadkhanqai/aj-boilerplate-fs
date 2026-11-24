@@ -17,6 +17,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The same literal in both test projects: the session-ended wire sample from docs/auth/session-ended-contract.md. -->
+    <Content Include="Fixtures\session-ended.sample.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
 

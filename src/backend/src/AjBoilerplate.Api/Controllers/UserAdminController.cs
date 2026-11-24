@@ -186,7 +186,7 @@ public sealed class UserAdminController : ControllerBase
                 // 501, never an empty 200: an empty success is indistinguishable from a true empty answer.
                 return StatusCode(StatusCodes.Status501NotImplemented, Envelope(
                     StatusCodes.Status501NotImplemented, EnvelopeCodes.UpstreamError,
-                    "This operation is not available on the configured identity upstream. Retrying will not help."));
+                    "The identity service is not configured for administration (its Keycloak admin client is not set up). Retrying will not help until it is."));
 
             case IdentityAdminOutcome.UpstreamRejected:
                 return StatusCode(StatusCodes.Status502BadGateway, Envelope(

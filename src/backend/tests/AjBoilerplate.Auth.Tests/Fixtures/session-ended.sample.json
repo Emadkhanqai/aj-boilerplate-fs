@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "eventType": "session.ended",
+  "eventId": "0192f0a0-0000-7000-8000-000000000001",
+  "sessionId": "0123456789abcdef0123456789abcdef",
+  "reason": "session-expired",
+  "reasonDetail": "idle_timeout",
+  "occurredAtUtc": "2026-10-22T09:15:42Z",
+  "sessionStartedAtUtc": "2026-10-22T01:00:07Z",
+  "identityProvider": "Auth Backend (Keycloak)",
+  "portalClientId": "my-app",
+  "correlationId": null
+}

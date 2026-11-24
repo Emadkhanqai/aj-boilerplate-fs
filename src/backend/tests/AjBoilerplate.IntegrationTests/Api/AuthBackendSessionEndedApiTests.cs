@@ -197,6 +197,41 @@ public sealed class AuthBackendSessionEndedApiTests : IDisposable
         return client;
     }
 
+    [Fact]
+    public async Task The_shared_sample_the_sender_is_tested_against_is_recorded_then_a_duplicate()
+    {
+        // Fixtures/session-ended.sample.json is the same file in the Auth service's tests, which assert the sender emits it.
+        const string sample = "0123456789abcdef0123456789abcdef";
+        var json = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "session-ended.sample.json"));
+        await _fixture.WithDbContextAsync(async db =>
+        {
+            db.AuthenticationEvents.Add(AuthenticationEvent.Record(
+                Guid.NewGuid(), "oid-sample", sample, new DateTimeOffset(2026, 10, 22, 1, 0, 7, TimeSpan.Zero), DateTimeOffset.UtcNow));
+            await db.SaveChangesAsync();
+        });
+        using var host = _fixture.Api.WithWebHostBuilder(b =>
+        {
+            b.UseSetting("Integration:AuthBackend:EventsKey", Key);
+            b.UseSetting("Integration:AuthBackend:PortalClientId", "my-app");
+        });
+        var client = host.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Auth-Events-Key", Key);
+
+        var outcomes = new List<string>();
+        for (var i = 0; i < 2; i++)
+        {
+            using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await client.PostAsync(Url, content, CancellationToken.None);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            outcomes.Add((await response.Content.ReadFromJsonAsync<JsonElement>(CancellationToken.None)).GetProperty("outcome").GetString()!);
+        }
+
+        Assert.Equal(["recorded", "duplicate"], outcomes);
+        var row = await RowAsync(sample);
+        Assert.Equal(new DateTimeOffset(2026, 10, 22, 9, 15, 42, TimeSpan.Zero), row.EndedAt);
+        Assert.Equal(("session-expired", "idle_timeout"), (row.EndReason, row.EndReasonDetail));
+    }
+
     private async Task<string> OutcomeAsync(Dictionary<string, object?> body)
     {
         var response = await Sender().PostAsJsonAsync(Url, body, CancellationToken.None);

@@ -329,6 +329,20 @@ public sealed class AdminSurfaceTests
     }
 
     [Fact]
+    public async Task The_no_seat_404_body_is_the_exact_text_the_portal_API_matches_on()
+    {
+        await using var host = await StartAsync();
+        host.Directory.Next = AdminResult.Failed(AdminOutcome.UserNotFound);
+
+        using var response = await SendAsync(host, "GET", $"/internal/admin/users/{EndpointHost.Subject}/groups", null);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        // Same literal as AuthServiceIdentityAdministrationTests in the API's unit tests: the two sides of one wire.
+        Assert.Equal("that subject holds no seat in any portal this installation administers", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task A_partial_failure_reports_what_actually_landed()
     {
         await using var host = await StartAsync();

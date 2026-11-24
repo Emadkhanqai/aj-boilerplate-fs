@@ -29,6 +29,9 @@ internal static class AdminEndpoints
     public const string ApiKeyHeader = "X-Admin-Api-Key";
     private const int MaxSubjectLength = 256;
 
+    /// <summary>The body of the "holds no seat" 404, byte for byte what the portal API matches on.</summary>
+    internal const string NoSeatMessage = "that subject holds no seat in any portal this installation administers";
+
     public static IEndpointRouteBuilder MapAdminEndpoints(this IEndpointRouteBuilder app)
     {
         var admin = app.MapGroup("/internal/admin").AddEndpointFilter(async (context, next) =>
@@ -213,7 +216,9 @@ internal static class AdminEndpoints
         {
             AdminOutcome.Success => onSuccess(result),
 
-            AdminOutcome.UserNotFound => Results.NotFound(new { error = "no such user in the directory" }),
+            // The words are a wire contract: the portal API tells THIS 404 ("holds no seat") from a switched-off surface's bare 404 by
+            // matching them (AuthServiceIdentityAdministration.NoSeatMarker). Change one side and the other must follow.
+            AdminOutcome.UserNotFound => Results.NotFound(new { error = NoSeatMessage }),
 
             // 422, a domain rule. One message for a malformed address, a domain that is not allowed and an empty allow-list, and it
             // names no domain, so it cannot be used to learn which domains are allowed. Nothing was sent to the directory.

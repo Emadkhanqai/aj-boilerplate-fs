@@ -169,6 +169,17 @@ public sealed class UserAdminApiTests : IDisposable
     }
 
     [Fact]
+    public async Task An_Auth_service_without_a_Keycloak_admin_client_says_so_in_words()
+    {
+        _auth.Respond(HttpStatusCode.NotImplemented, """{"title":"Not Implemented","status":501}""");
+
+        var response = await Admin().GetAsync("/api/v1/admin/groups", CancellationToken.None);
+
+        Assert.Equal(HttpStatusCode.NotImplemented, response.StatusCode);
+        Assert.Contains("not configured", (await response.Content.ReadErrorEnvelopeAsync()).Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task A_refused_email_domain_is_a_422_with_its_own_code_on_create()
     {
         _auth.Respond(HttpStatusCode.UnprocessableEntity, """{"error":"EMAIL_DOMAIN_NOT_ALLOWED","message":"x"}""");

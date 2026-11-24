@@ -605,6 +605,23 @@ public sealed class HttpSessionEndedSenderTests : IAsyncLifetime
         1);
 
     [Fact]
+    public async Task The_body_is_the_shared_sample_the_receivers_tests_post()
+    {
+        // Fixtures/session-ended.sample.json is the same file in the API's integration tests, which POST it to the receiver.
+        var sample = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "Fixtures", "session-ended.sample.json"));
+        var ev = Event() with { ClientId = "my-app" };
+
+        await Sender().SendAsync(ev, Target, default);
+
+        var (_, body) = Assert.Single(_received);
+        using var sent = JsonDocument.Parse(body);
+        using var expected = JsonDocument.Parse(sample);
+        Assert.Equal(
+            expected.RootElement.EnumerateObject().Select(p => (p.Name, p.Value.ToString(), p.Value.ValueKind)).ToArray(),
+            sent.RootElement.EnumerateObject().Select(p => (p.Name, p.Value.ToString(), p.Value.ValueKind)).ToArray());
+    }
+
+    [Fact]
     public async Task The_body_and_headers_are_the_contract_exactly()
     {
         var result = await Sender().SendAsync(Event(), Target, default);
