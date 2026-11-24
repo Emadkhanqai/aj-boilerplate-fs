@@ -86,3 +86,93 @@ export interface ItemListRequest {
   pageSize?: number;
   search?: string;
 }
+
+/* ============================ Administration (users, groups, sign-in history, portals) ============================
+ * Hand-written for the same reason as the Item slice above: the generated shapes are all optional
+ * and nullable. Checked against docs/api/openapi.json (DirectoryUserResponse, DirectoryMemberResponse,
+ * DirectoryGroupResponse, UserGroupsResponse, CreatedDirectoryUserResponse, MePortalsResponse,
+ * AuthenticationSessionResponse, AuthenticationHistoryUserResponse). */
+
+export interface DirectoryUser {
+  subject: string;
+  username: string;
+  email?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  enabled: boolean;
+}
+
+export interface DirectoryMember {
+  user: DirectoryUser;
+  groups: string[];
+}
+
+export interface DirectoryGroup {
+  path: string;
+  name: string;
+  parentPath?: string | null;
+}
+
+export interface CreateDirectoryUserRequest {
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  groupPath: string;
+}
+
+export interface CreatedDirectoryUser {
+  user: DirectoryUser;
+  groups: string[];
+}
+
+/** `PUT/GET /api/v1/admin/users/{subject}/groups`. `added`/`removed` describe the PUT's effect. */
+export interface UserGroupsResult {
+  groups: string[];
+  added: string[];
+  removed: string[];
+}
+
+export interface PortalLink {
+  key: string;
+  name: string;
+  /** Where it lives; may be a relative path. */
+  url: string;
+}
+
+export interface MePortals {
+  portalKeys: string[];
+  portals: PortalLink[];
+}
+
+/** `signedIn | user | sessionEnded | duration | result | endReason` — the API's `sortBy` vocabulary. */
+export type AuthHistorySortBy = 'signedIn' | 'user' | 'sessionEnded' | 'duration' | 'result' | 'endReason';
+
+export interface AuthenticationSession {
+  id: string;
+  userId?: string | null;
+  userDisplayName?: string | null;
+  signedInAtUtc: string;
+  /** `null` while the session is still open. */
+  endedAtUtc?: string | null;
+  endReason?: string | null;
+  endReasonDetail?: string | null;
+  result?: string | null;
+  durationSeconds?: number | null;
+}
+
+export interface AuthenticationHistoryUser {
+  userId: string;
+  userDisplayName?: string | null;
+}
+
+export interface AuthHistoryRequest {
+  userId?: string;
+  /** ISO instant, inclusive. */
+  from?: string;
+  /** ISO instant, exclusive. */
+  to?: string;
+  sortBy?: AuthHistorySortBy;
+  sortDir?: 'asc' | 'desc';
+  page?: number;
+  pageSize?: number;
+}

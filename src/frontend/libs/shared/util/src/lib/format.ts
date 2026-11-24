@@ -117,3 +117,16 @@ export function initialsOf(nameOrEmail: string): string {
   const second = parts.length > 1 ? (parts[1]?.[0] ?? '') : '';
   return (first + second).toUpperCase() || '?';
 }
+
+/** Formats a whole-second duration as e.g. "45s" / "12m 05s" / "3h 12m". Em dash for nullish/negative. */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || Number.isNaN(seconds) || seconds < 0) {
+    return EM_DASH;
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+  return `${s}s`;
+}

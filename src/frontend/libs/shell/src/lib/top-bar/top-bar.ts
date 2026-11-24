@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, computed, inject, input, output } f
 import { ButtonModule } from 'primeng/button';
 import { AuthService, highestRole } from '@aj-boilerplate/auth';
 import { LanguageService } from '@aj-boilerplate/shared/util';
+import { PortalSwitcherComponent } from '../portal-switcher/portal-switcher';
 
 /**
  * The authenticated shell's header: nav toggle (small screens), page title + breadcrumb, the
@@ -12,7 +13,7 @@ import { LanguageService } from '@aj-boilerplate/shared/util';
   selector: 'app-top-bar',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ButtonModule],
+  imports: [ButtonModule, PortalSwitcherComponent],
   template: `
     <header class="topbar">
       <p-button
@@ -32,6 +33,7 @@ import { LanguageService } from '@aj-boilerplate/shared/util';
       </div>
       <span class="spacer"></span>
       <div class="header-actions">
+        <app-portal-switcher />
         @if (primaryRole(); as role) {
           <span class="pill-role">{{ role }}</span>
         }

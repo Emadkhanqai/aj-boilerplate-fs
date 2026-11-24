@@ -23,6 +23,8 @@ function metaForPath(pathname: string): PageMeta {
   if (pathname === '/items/new') return { title: 'New Item', crumb: 'Items' };
   if (pathname.startsWith('/items/')) return { title: 'Edit Item', crumb: 'Items' };
   if (pathname.startsWith('/items')) return { title: 'Items', crumb: 'Workspace' };
+  if (pathname.startsWith('/admin/users')) return { title: 'Users & roles', crumb: 'Administration' };
+  if (pathname.startsWith('/admin/sign-in-history')) return { title: 'Sign-in history', crumb: 'Administration' };
   if (pathname.startsWith('/settings')) return { title: 'Settings', crumb: 'Administration' };
   return { title: 'Application', crumb: '' };
 }

@@ -42,6 +42,16 @@ export default [
                 'scope:auth',
                 'scope:shell',
                 'scope:feature-items',
+                'scope:feature-admin',
+              ],
+            },
+            {
+              sourceTag: 'scope:feature-admin',
+              onlyDependOnLibsWithTags: [
+                'scope:data-access',
+                'scope:shared-ui',
+                'scope:shared-util',
+                'scope:auth',
               ],
             },
             {

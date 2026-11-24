@@ -20,6 +20,7 @@ libs/
   shared/util/             formatters and helpers, no UI, no HTTP
   shell/                   sidebar, top bar, layout, nav config
   feature-items/           SAMPLE FEATURE — read it, copy it, delete it
+  feature-admin/           Users & roles and Sign-in history (canAdminister); API: AdminApiService
 ```
 
 **Import direction is enforced, not advisory:** `app → feature → shared`. `shared/*` never imports
