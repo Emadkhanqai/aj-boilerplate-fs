@@ -48,8 +48,13 @@ MARKER='.derived-by-derive-sh'
 
 # Paths that exist in this tree but must never reach a derived repository.
 # One entry per line, matched as a prefix against the repository-relative path.
+#
+# `scripts/derive.sh` is dropped because it only works in the full-stack tree (it refuses to run
+# without src/backend, src/frontend and .claude) and ADR-0011 says a derived tree is never edited.
+# Shipping it would hand every consumer of be/fe a script that dies on its first line.
 COMMON_DROP='
 docker-compose.yml
+scripts/derive.sh
 '
 
 BE_DROP='
@@ -244,6 +249,36 @@ Remove it yourself if you are sure, or choose a different --out."
   rm -rf -- "$_dir"
 }
 
+# env_example_for <target> <source-file>   -> the derived `.env.example` on stdout
+#
+# There is ONE `.env.example`, at the root of this tree, and it documents every variable of the full
+# stack. A single-stack repository must not list the other stack's keys, so the file marks what is
+# stack-specific:
+#
+#     # @derive keep=fs,be        <- the block below is kept only in the named repositories
+#     ...
+#     # @derive end
+#
+# Unmarked lines are kept everywhere. Marker lines never reach a derived file. Blocks may nest; a
+# line is kept only when every block around it names the repository.
+# `src/backend/` and `src/frontend/` are stripped from the text for the same reason
+# rewrite_paths does it: the promoted stack IS the root there. (rewrite_paths does not run on
+# `.example` files, so it is done here.) The file had a second, hand-kept copy at
+# src/backend/.env.example until ADR-0011's rule "one document, no mirror" was applied to it; the
+# copy lacked every Keycloak and Auth key and collided with this one at promotion.
+env_example_for() {
+  _t="$1"; _src="$2"
+  awk -v t="$_t" '
+    /^# @derive keep=/ {
+      list = substr($0, index($0, "=") + 1); n = split(list, a, ","); k = 0
+      for (i = 1; i <= n; i++) if (a[i] == t) k = 1
+      depth++; st[depth] = (k && (depth == 1 || st[depth - 1])); next
+    }
+    /^# @derive end/ { depth--; next }
+    { if (depth == 0 || st[depth]) print }
+  ' "$_src" | sed -e 's#src/backend/##g' -e 's#src/frontend/##g' | cat -s
+}
+
 # ---------------------------------------------------------------------------
 # derive <target>   target = be | fe
 # ---------------------------------------------------------------------------
@@ -344,8 +379,12 @@ or pass a different --out."
 
     if [ "$WRITE" -eq 1 ]; then
       mkdir -p "$dest/$(dirname "$out_rel")"
-      cp -p "$ROOT/$f" "$dest/$out_rel"
-      [ "$do_rewrite" -eq 1 ] && rewrite_paths "$dest/$out_rel" "$promoted"
+      if [ "$out_rel" = '.env.example' ]; then
+        env_example_for "$target" "$ROOT/$f" > "$dest/$out_rel"
+      else
+        cp -p "$ROOT/$f" "$dest/$out_rel"
+        [ "$do_rewrite" -eq 1 ] && rewrite_paths "$dest/$out_rel" "$promoted"
+      fi
     fi
   done <<EOF
 $files
@@ -404,6 +443,25 @@ check_contamination() {
       problems=$((problems + 1))
     fi
   done
+
+  # The example environment file is filtered per stack. A leaked marker, or a key list that is not
+  # the stack's own, means the filter did not run or the markers drifted. The counts are the
+  # controls: each one is a key that must be present (be, fe) or absent (the other stack).
+  if [ -f "$dest/.env.example" ]; then
+    if grep -q '@derive' "$dest/.env.example"; then
+      printf '  .env.example still contains @derive marker lines.\n' >&2; problems=$((problems + 1))
+    fi
+    case "$target" in
+      be) must='^Keycloak__Authority=' ; must_not='^AUTH_MODE=' ;;
+      fe) must='^AUTH_MODE='           ; must_not='^ConnectionStrings__Default=' ;;
+    esac
+    grep -q "$must" "$dest/.env.example" || { printf '  .env.example lacks %s\n' "$must" >&2; problems=$((problems + 1)); }
+    if grep -q "$must_not" "$dest/.env.example"; then
+      printf '  .env.example carries the other stack: %s\n' "$must_not" >&2; problems=$((problems + 1))
+    fi
+  else
+    printf '  MISSING .env.example\n' >&2; problems=$((problems + 1))
+  fi
 
   if [ "$problems" -gt 0 ]; then
     printf '  %s check FAILED with %s problem(s).\n' "$target" "$problems" >&2

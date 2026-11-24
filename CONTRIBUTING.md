@@ -239,7 +239,7 @@ change how every future change is made, in three repositories.
 - **Every hook that blocks needs a documented opt-out** with a name matching the existing
   ones (`SONAR_GATE_SKIP`, `COMMIT_MSG_SKIP`), and the opt-out must be loud when used. A
   gate with no escape hatch gets disabled wholesale the first time it is wrong.
-- **Document it in `.env.example` section 10 and in the table above** in the same pull
+- **Document it in `.env.example` (the local developer tooling section) and in the table above** in the same pull
   request.
 - **Never edit `.claude/settings.json`'s `extraKnownMarketplaces` or `enabledPlugins`**
   as a side effect of another change.
