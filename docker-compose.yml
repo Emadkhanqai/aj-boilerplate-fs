@@ -207,6 +207,21 @@ services:
       # Seats come from the app client's roles, exactly as in a deployed environment, so the realm
       # roles Keycloak adds by default (default-roles-*, offline_access) are not read as seats.
       Keycloak__HonourRealmRoles: 'false'
+      # The admin screens (Users & roles) call the Auth service's /internal/admin/* directly on the compose network
+      # (never through the web gateway, which answers 404 for /internal/) with this key.
+      AuthService__BaseUrl: http://auth:8080
+      AuthService__AdminApiKey: ${LOCAL_AUTH_ADMIN_API_KEY:-dev-only-auth-admin-key-never-reuse}
+      # The Auth service reports each session's end here (sign-in history shows "Ended"). Same key on both sides.
+      Integration__AuthBackend__EventsKey: ${LOCAL_AUTH_EVENTS_KEY:-dev-only-auth-events-key-never-reuse}
+      Integration__AuthBackend__PortalClientId: aj-boilerplate-app
+      # Two sample entries so the portal switcher shows. Replace with your own portals.
+      Portals__0__Key: app
+      Portals__0__Name: AJ Boilerplate
+      Portals__0__Url: http://localhost:${WEB_PORT:-4200}
+      Portals__1__Key: docs
+      Portals__1__Name: Sample second portal
+      Portals__1__Url: http://localhost:${WEB_PORT:-4200}/?portal=sample
+      Portals__1__RequiredCapability: read
     ports:
       - '${API_PORT:-8080}:8080'
 
@@ -239,6 +254,7 @@ services:
       WEB_PORT: ${WEB_PORT:-4200}
       LOCAL_APP_CLIENT_SECRET: ${LOCAL_APP_CLIENT_SECRET:-dev-only-app-client-secret-never-reuse}
       LOCAL_ENTRA_SIM_CLIENT_SECRET: ${LOCAL_ENTRA_SIM_CLIENT_SECRET:-dev-only-entra-sim-secret-never-reuse}
+      LOCAL_ADMIN_CLIENT_SECRET: ${LOCAL_ADMIN_CLIENT_SECRET:-dev-only-admin-client-secret-never-reuse}
       LOCAL_USER_PASSWORD: ${LOCAL_USER_PASSWORD:-dev-only-password-never-reuse}
     volumes:
       - ./infra/keycloak/realm-aj-boilerplate.json:/opt/keycloak/data/import/realm-aj-boilerplate.json:ro
@@ -331,6 +347,18 @@ services:
       Auth__Session__EncryptionKey: ${LOCAL_AUTH_SESSION_KEY:-REVWLU9OTFktbmV2ZXItcmV1c2UtdGhpcy1rZXktMDA=}
       # Enables POST /internal/admin/users/{subject}/refresh (header X-Admin-Api-Key).
       Auth__Admin__ApiKey: ${LOCAL_AUTH_ADMIN_API_KEY:-dev-only-auth-admin-key-never-reuse}
+      # The directory behind the admin routes: a dedicated Keycloak client with a service account (realm-management roles
+      # view-users, query-users, query-groups, manage-users), NOT the app client. Seats are the groups under /app
+      # (/app/admins, /app/editors, /app/viewers), each mapped in the realm to the app client's seat role.
+      Auth__Admin__Keycloak__ClientId: aj-boilerplate-admin
+      Auth__Admin__Keycloak__ClientSecret: ${LOCAL_ADMIN_CLIENT_SECRET:-dev-only-admin-client-secret-never-reuse}
+      Auth__Admin__ManagedGroupPaths__0: /app
+      # Deny by default: a new account may only be created for a listed domain. example.com is DEV-ONLY (the seeded users are example.test).
+      Auth__Admin__AllowedEmailDomains__0: example.com
+      Auth__Portal__DisplayName: AJ Boilerplate
+      # Where a session's end is reported (the API's receiver) and the shared key it expects. Direct to the API, never via the gateway.
+      Auth__Portal__SessionEvents__Url: http://api:8080/api/integration/auth-backend/session-ended
+      Auth__Portal__SessionEvents__Key: ${LOCAL_AUTH_EVENTS_KEY:-dev-only-auth-events-key-never-reuse}
     healthcheck:
       # The runtime image has neither curl nor wget, so this speaks HTTP to /healthz (liveness:
       # touches no dependency) over bash's /dev/tcp (the image's /bin/sh is dash, which has none, hence the explicit bash).

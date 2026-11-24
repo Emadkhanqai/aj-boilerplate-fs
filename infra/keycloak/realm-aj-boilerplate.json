@@ -95,6 +95,19 @@
         "acr",
         "basic"
       ]
+    },
+    {
+      "clientId": "aj-boilerplate-admin",
+      "name": "Admin REST client of the Auth service (DEV-ONLY)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${LOCAL_ADMIN_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true
     }
   ],
   "roles": {
@@ -154,6 +167,41 @@
       ]
     }
   },
+  "groups": [
+    {
+      "name": "app",
+      "path": "/app",
+      "subGroups": [
+        {
+          "name": "admins",
+          "path": "/app/admins",
+          "clientRoles": {
+            "aj-boilerplate-app": [
+              "admin"
+            ]
+          }
+        },
+        {
+          "name": "editors",
+          "path": "/app/editors",
+          "clientRoles": {
+            "aj-boilerplate-app": [
+              "editor"
+            ]
+          }
+        },
+        {
+          "name": "viewers",
+          "path": "/app/viewers",
+          "clientRoles": {
+            "aj-boilerplate-app": [
+              "viewer"
+            ]
+          }
+        }
+      ]
+    }
+  ],
   "users": [
     {
       "username": "admin",
@@ -169,11 +217,9 @@
           "temporary": false
         }
       ],
-      "clientRoles": {
-        "aj-boilerplate-app": [
-          "admin"
-        ]
-      },
+      "groups": [
+        "/app/admins"
+      ],
       "realmRoles": [
         "offline_access"
       ]
@@ -192,11 +238,9 @@
           "temporary": false
         }
       ],
-      "clientRoles": {
-        "aj-boilerplate-app": [
-          "editor"
-        ]
-      },
+      "groups": [
+        "/app/editors"
+      ],
       "realmRoles": [
         "offline_access"
       ]
@@ -215,11 +259,9 @@
           "temporary": false
         }
       ],
-      "clientRoles": {
-        "aj-boilerplate-app": [
-          "viewer"
-        ]
-      },
+      "groups": [
+        "/app/viewers"
+      ],
       "realmRoles": [
         "offline_access"
       ]
@@ -241,6 +283,40 @@
       "realmRoles": [
         "offline_access"
       ]
+    },
+    {
+      "username": "editor2",
+      "enabled": true,
+      "email": "editor2@example.test",
+      "emailVerified": true,
+      "firstName": "Eden",
+      "lastName": "Editor",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${LOCAL_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "groups": [
+        "/app/editors"
+      ],
+      "realmRoles": [
+        "offline_access"
+      ]
+    },
+    {
+      "username": "service-account-aj-boilerplate-admin",
+      "enabled": true,
+      "serviceAccountClientId": "aj-boilerplate-admin",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "query-groups",
+          "manage-users"
+        ]
+      }
     }
   ],
   "clientScopes": [
