@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using System.Text.Json;
+using AjBoilerplate.Application.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 
@@ -11,7 +13,10 @@ namespace AjBoilerplate.Api.Identity;
 /// policies see one role source regardless of how the realm is configured. Four sources are merged —
 /// a token may legitimately carry more than one:
 /// <list type="bullet">
-///   <item><c>realm_access</c> — one claim whose value is a JSON object with a <c>roles</c> array.</item>
+///   <item><c>realm_access</c> — one claim whose value is a JSON object with a <c>roles</c> array.
+///     Read ONLY when <see cref="KeycloakOptions.HonourRealmRoles"/> is true: a shared realm's
+///     realm-level <c>admin</c> belongs to whichever application granted it, and must not become this
+///     portal's administrative tier.</item>
 ///   <item><c>resource_access</c> — the same, nested under the configured client id.</item>
 ///   <item>A literal <c>roles</c> claim, for a realm that emits the flat shape AND a pipeline that
 ///     leaves the name alone (see the hazard below — the default pipeline does not).</item>
@@ -40,6 +45,14 @@ namespace AjBoilerplate.Api.Identity;
 /// <see cref="ClaimsPrincipal.IsInRole"/> filter in <see cref="TransformAsync"/> drops anything
 /// already present, so the principal cannot grow per request.
 /// </para>
+///
+/// <para>
+/// <b>It projects a SECOND vocabulary too, and keeps the two apart.</b> A Keycloak client carries
+/// <c>resource:action</c> permission roles alongside the seat, both arriving in the same flat
+/// <c>roles</c> claim. Seats land on <see cref="ClaimTypes.Role"/>; permissions land on
+/// <see cref="PermissionClaims.ClaimType"/> and never on <see cref="ClaimTypes.Role"/>, so everything
+/// that decides who the caller IS sees exactly the seats. Values in neither vocabulary are dropped.
+/// </para>
 /// </summary>
 public sealed class KeycloakRoleClaimsTransformation : IClaimsTransformation
 {
@@ -47,9 +60,27 @@ public sealed class KeycloakRoleClaimsTransformation : IClaimsTransformation
     private const string ResourceAccessClaim = "resource_access";
     private const string FlatRolesClaim = "roles";
 
-    private readonly IOptions<KeycloakOptions> _options;
+    /// <summary>
+    /// Role keys already reported by <see cref="WarnAboutUnrecognisedKeys"/>, so a steady stream of
+    /// requests carrying the same unmapped key logs once per process instead of once per request.
+    /// Static on purpose, and bounded by <see cref="WarnedKeyLimit"/>: a set that only ever grows is a
+    /// leak waiting for a misconfigured realm, and the value is in the first few keys anyway.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte> WarnedUnrecognisedKeys = new(StringComparer.Ordinal);
 
-    public KeycloakRoleClaimsTransformation(IOptions<KeycloakOptions> options) => _options = options;
+    private const int WarnedKeyLimit = 64;
+
+    private const int MaxLoggedKeyLength = 120;
+
+    private readonly IOptions<KeycloakOptions> _options;
+    private readonly ILogger<KeycloakRoleClaimsTransformation> _logger;
+
+    public KeycloakRoleClaimsTransformation(
+        IOptions<KeycloakOptions> options, ILogger<KeycloakRoleClaimsTransformation> logger)
+    {
+        _options = options;
+        _logger = logger;
+    }
 
     public Task<ClaimsPrincipal> TransformAsync(ClaimsPrincipal principal)
     {
@@ -58,45 +89,116 @@ public sealed class KeycloakRoleClaimsTransformation : IClaimsTransformation
             return Task.FromResult(principal);
         }
 
-        var clientId = _options.Value.ClientId;
-        foreach (var role in ExtractApplicationRoles(principal, clientId).Where(role => !principal.IsInRole(role)))
+        // Both vocabularies are derived from ONE read of the raw keys, before anything is added to the
+        // identity. The collection this reads is the one the loops below append to, so re-reading it
+        // between them would decide the second vocabulary from a principal the first loop had mutated.
+        var rawKeys = RawRoleKeys(principal, _options.Value.ClientId, _options.Value.HonourRealmRoles);
+
+        WarnAboutUnrecognisedKeys(rawKeys, _logger);
+
+        foreach (var role in ApplicationRolesFrom(rawKeys).Where(role => !principal.IsInRole(role)))
         {
             identity.AddClaim(new Claim(ClaimTypes.Role, role));
+        }
+
+        // Permissions go onto their OWN claim type, never ClaimTypes.Role — see PermissionClaims.
+        foreach (var permission in PermissionsFrom(rawKeys)
+                     .Where(permission => !principal.HasClaim(PermissionClaims.ClaimType, permission)))
+        {
+            identity.AddClaim(new Claim(PermissionClaims.ClaimType, permission));
         }
 
         return Task.FromResult(principal);
     }
 
     /// <summary>
-    /// Every role on <paramref name="principal"/> — realm roles, <paramref name="clientId"/>'s client
-    /// roles, a flat <c>roles</c> claim, and anything already sitting on
-    /// <see cref="ClaimTypes.Role"/> — translated to canonical role names, de-duplicated, with
+    /// Every seat on <paramref name="principal"/> — <paramref name="clientId"/>'s client roles, a flat
+    /// <c>roles</c> claim, anything already on <see cref="ClaimTypes.Role"/>, and realm roles when
+    /// <paramref name="honourRealmRoles"/> — translated to canonical role names, de-duplicated, with
     /// unmapped keys dropped.
     ///
     /// <para>
-    /// Exposed as a standalone step — not only reachable through <see cref="TransformAsync"/> — so an
-    /// authentication event can resolve the caller's role at token-validation time, before
-    /// <see cref="IClaimsTransformation"/> has run for that request (transformations run after the
-    /// handler's events, inside <c>AuthenticationService.AuthenticateAsync</c>). That call site is
-    /// exactly where the claim-mapping hazard described on this class bites, because the handler has
-    /// already renamed a flat <c>roles</c> claim by then; <see cref="ExtractRoleTypeClaims"/> is what
-    /// makes this method safe to use there.
+    /// Exposed as a standalone step so an authentication event can resolve the caller's role at
+    /// token-validation time, before <see cref="IClaimsTransformation"/> has run. That is exactly where
+    /// the claim-mapping hazard above bites, and <see cref="ExtractRoleTypeClaims"/> is what makes this
+    /// safe to call there.
     /// </para>
     /// </summary>
-    public static IReadOnlyList<string> ExtractApplicationRoles(ClaimsPrincipal principal, string? clientId) =>
-        ExtractRealmRoles(principal)
+    public static IReadOnlyList<string> ExtractApplicationRoles(
+        ClaimsPrincipal principal, string? clientId, bool honourRealmRoles = false) =>
+        ApplicationRolesFrom(RawRoleKeys(principal, clientId, honourRealmRoles));
+
+    /// <summary>
+    /// Every <see cref="Permissions"/> value on <paramref name="principal"/>, canonicalised and
+    /// de-duplicated, with unrecognised strings dropped. Permissions arrive in the SAME sources as
+    /// seats, so this reads exactly what <see cref="ExtractApplicationRoles"/> reads and differs only
+    /// in which table it resolves against. The two results are disjoint by construction.
+    /// </summary>
+    public static IReadOnlyList<string> ExtractPermissions(
+        ClaimsPrincipal principal, string? clientId, bool honourRealmRoles = false) =>
+        PermissionsFrom(RawRoleKeys(principal, clientId, honourRealmRoles));
+
+    // Materialising here is load-bearing, not a style choice: TransformAsync appends to the very claim
+    // collection ExtractRoleTypeClaims enumerates, so a lazy sequence would leave the foreach mutating
+    // what it is iterating — InvalidOperationException on every authenticated request.
+    private static List<string> RawRoleKeys(ClaimsPrincipal principal, string? clientId, bool honourRealmRoles) =>
+        (honourRealmRoles ? ExtractRealmRoles(principal) : [])
             .Concat(ExtractClientRoles(principal, clientId))
             .Concat(ExtractFlatRoles(principal))
             .Concat(ExtractRoleTypeClaims(principal))
+            .ToList();
+
+    private static IReadOnlyList<string> ApplicationRolesFrom(List<string> rawKeys) =>
+        rawKeys
             .Select(KeycloakRoles.ToApplicationRole)
             .Where(role => role is not null)
             .Select(role => role!)
             .Distinct(StringComparer.Ordinal)
-            // Materialising here is load-bearing, not a style choice. TransformAsync appends to the
-            // very claim collection ExtractRoleTypeClaims enumerates, so returning a lazy sequence
-            // would leave the foreach mutating what it is iterating — InvalidOperationException on
-            // every authenticated request. Do not relax this to IEnumerable<string>.
             .ToList();
+
+    private static IReadOnlyList<string> PermissionsFrom(List<string> rawKeys) =>
+        rawKeys
+            .Select(Permissions.Canonical)
+            .Where(permission => permission is not null)
+            .Select(permission => permission!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>
+    /// Logs a warning, once per distinct key per process, for every key that is neither a seat nor a
+    /// permission and was therefore silently dropped. Every source here fails closed silently, which
+    /// is how a real seat with an unmapped key once resolved to "no role" with nothing in the log.
+    /// Only the rejected key is logged — never the token, the subject or any other claim — scrubbed of
+    /// control characters and truncated, because it is externally supplied text. A recognised
+    /// permission is not an unrecognised key and is not reported.
+    /// </summary>
+    private static void WarnAboutUnrecognisedKeys(List<string> rawKeys, ILogger logger)
+    {
+        if (!logger.IsEnabled(LogLevel.Warning))
+        {
+            return;
+        }
+
+        foreach (var key in rawKeys.Where(key =>
+                     KeycloakRoles.ToApplicationRole(key) is null && !Permissions.IsPermission(key)))
+        {
+            if (WarnedUnrecognisedKeys.Count >= WarnedKeyLimit || !WarnedUnrecognisedKeys.TryAdd(key, 0))
+            {
+                continue;
+            }
+
+            logger.LogWarning(
+                "Role key '{RoleKey}' from the authorization server is not a recognised seat or permission and was dropped. "
+                + "If it is a real one, add it to ApplicationRoles.Canonical or Permissions.All; this is logged once per key per process.",
+                Scrub(key));
+        }
+    }
+
+    private static string Scrub(string key)
+    {
+        var cleaned = string.Concat(key.Select(c => char.IsControl(c) ? ' ' : c));
+        return cleaned.Length <= MaxLoggedKeyLength ? cleaned : cleaned[..MaxLoggedKeyLength] + "…";
+    }
 
     private static List<string> ExtractRealmRoles(ClaimsPrincipal principal)
     {

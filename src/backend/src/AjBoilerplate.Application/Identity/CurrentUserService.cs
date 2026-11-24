@@ -57,11 +57,24 @@ public sealed class CurrentUserService : ICurrentUserService
             .Distinct(StringComparer.Ordinal)
             .ToList();
 
+        // Capabilities are the seat UNIONED with the caller's permissions — the same function the
+        // ReadAccess/WriteAccess/AdminAccess policies call. Reporting the seat alone while the server
+        // authorizes on the union is the "UI hides a button the server would have allowed" failure.
+        // Permissions are canonicalised here for the same reason roles are, and are deliberately NOT
+        // added to `roles`: that field says who the caller IS, and a permission is not a seat.
+        var permissions = _claims.Permissions
+            .Select(Permissions.Canonical)
+            .Where(permission => permission is not null)
+            .Select(permission => permission!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
         return new UserProfileDto(
             userId.Trim(),
             _claims.Name,
             _claims.Email,
             roles,
-            UserCapabilitiesDto.From(RoleCapabilities.For(roles)));
+            UserCapabilitiesDto.From(RoleCapabilities.For(roles, permissions)),
+            permissions);
     }
 }

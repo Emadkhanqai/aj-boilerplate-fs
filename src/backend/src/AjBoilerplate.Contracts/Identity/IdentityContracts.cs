@@ -22,12 +22,18 @@ namespace AjBoilerplate.Contracts.Identity;
 /// is an input to the permission model, and a client that re-derives permissions from role names has
 /// quietly forked the model.
 /// </param>
+/// <param name="Permissions">
+/// Every <c>resource:action</c> permission the caller holds (<c>items:read</c>, <c>items:write</c>,
+/// <c>admin:manage</c> in the shipped vocabulary). Reported next to the capability flags, never inside
+/// <paramref name="Roles"/>: a permission is not a seat.
+/// </param>
 public sealed record UserProfileResponse(
     string UserId,
     string DisplayName,
     string Email,
     IReadOnlyList<string> Roles,
-    UserCapabilitiesResponse Capabilities);
+    UserCapabilitiesResponse Capabilities,
+    IReadOnlyList<string> Permissions);
 
 /// <summary>
 /// The permission flags a client may gate its UI on, resolved server-side.

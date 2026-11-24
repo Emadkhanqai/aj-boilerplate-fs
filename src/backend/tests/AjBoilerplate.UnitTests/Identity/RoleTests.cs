@@ -91,4 +91,34 @@ public sealed class RoleTests
         // Two copies of this table would be free to drift, and drift here fails silently: the
         // policies keep working while every list the user sees comes back empty.
         Assert.Equal(ApplicationRoles.Canonical("editor"), KeycloakRoles.ToApplicationRole("editor"));
+
+    [Theory]
+    [InlineData(Permissions.ItemsRead, true, false, false)]
+    [InlineData(Permissions.ItemsWrite, false, true, false)]
+    [InlineData(Permissions.AdminManage, false, false, true)]
+    public void A_permission_without_a_seat_grants_exactly_its_own_capability(
+        string permission, bool read, bool write, bool administer)
+    {
+        var capabilities = RoleCapabilities.For([], [permission]);
+
+        Assert.Equal(read, capabilities.CanRead);
+        Assert.Equal(write, capabilities.CanWrite);
+        Assert.Equal(administer, capabilities.CanAdminister);
+    }
+
+    [Fact]
+    public void A_seat_and_a_permission_union_and_neither_narrows_the_other()
+    {
+        var capabilities = RoleCapabilities.For([ApplicationRoles.Viewer], [Permissions.ItemsWrite]);
+
+        Assert.True(capabilities.CanRead);
+        Assert.True(capabilities.CanWrite);
+        Assert.False(capabilities.CanAdminister);
+    }
+
+    [Fact]
+    public void An_unknown_permission_grants_nothing() =>
+        Assert.Equal(
+            new RoleCapabilities(false, false, false),
+            RoleCapabilities.For([], ["items:delete", "admin"]));
 }

@@ -14,15 +14,14 @@ public sealed class HttpContextActorClaims : IActorClaims
     private readonly IHttpContextAccessor _accessor;
     private IReadOnlyList<string>? _roles;
     private IReadOnlyList<string>? _groups;
+    private IReadOnlyList<string>? _permissions;
 
     public HttpContextActorClaims(IHttpContextAccessor accessor) => _accessor = accessor;
 
     private ClaimsPrincipal? User => _accessor.HttpContext?.User;
 
     public string Id =>
-        User?.FindFirst("oid")?.Value
-            ?? User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? User?.FindFirst("sub")?.Value
+        ActorIdClaim.Find(User)
             // The shared constant, not a literal: a use case that records something per user must be
             // able to recognise "there is no real subject here" using the same value produced here.
             ?? ActorIdentifiers.Anonymous;
@@ -65,6 +64,16 @@ public sealed class HttpContextActorClaims : IActorClaims
             .Distinct(StringComparer.Ordinal)
             .ToList() ?? [];
 
+    /// <summary>Every canonical permission the caller holds, from <see cref="PermissionClaims.ClaimType"/>
+    /// — never from <see cref="ClaimTypes.Role"/>, so a permission can never be read as a seat.</summary>
+    public IReadOnlyList<string> Permissions =>
+        _permissions ??= User?.FindAll(PermissionClaims.ClaimType)
+            .Select(c => AjBoilerplate.Application.Identity.Permissions.Canonical(c.Value))
+            .Where(permission => permission is not null)
+            .Select(permission => permission!)
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
     /// <summary>The group(s) the caller belongs to, from a Keycloak-mapped <c>groups</c> claim (may
     /// be multi-valued). Empty when the token carries no such claim.</summary>
     public IReadOnlyList<string> Groups =>
@@ -73,4 +82,18 @@ public sealed class HttpContextActorClaims : IActorClaims
             .Where(v => v.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList() ?? [];
+}
+
+/// <summary>
+/// The one definition of "which claim names this person", shared by the actor, the rate limiter and the
+/// sign-in recording so they cannot name one person three ways. <c>oid</c>, then the mapped <c>sub</c>
+/// (inbound claim mapping renames a Keycloak <c>sub</c> to <see cref="ClaimTypes.NameIdentifier"/>), then
+/// the literal <c>sub</c>.
+/// </summary>
+public static class ActorIdClaim
+{
+    public static string? Find(ClaimsPrincipal? user) =>
+        user?.FindFirst("oid")?.Value
+            ?? user?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user?.FindFirst("sub")?.Value;
 }

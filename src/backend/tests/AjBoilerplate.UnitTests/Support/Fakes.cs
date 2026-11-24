@@ -116,3 +116,35 @@ public sealed class FakeItemRepository : IItemRepository
     private static void StampRowVersion(Item item) =>
         RowVersionProperty.SetValue(item, BitConverter.GetBytes(Interlocked.Increment(ref _tokenSequence)));
 }
+
+/// <summary>An in-memory <see cref="AjBoilerplate.Application.AuthenticationHistory.IAuthenticationEventRepository"/>
+/// that can be told the session already exists, or to fail outright. The mapping from SQL error
+/// 2601/2627 to "already exists" needs a real SQL Server and is proved in the integration suite.</summary>
+public sealed class FakeAuthenticationEventRepository : AjBoilerplate.Application.AuthenticationHistory.IAuthenticationEventRepository
+{
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Saved { get; } = [];
+
+    public List<AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent> Attempted { get; } = [];
+
+    /// <summary>When true, every add reports the session as already recorded.</summary>
+    public bool AlreadyExists { get; set; }
+
+    public Exception? Failure { get; set; }
+
+    public Task<bool> TryAddAsync(AjBoilerplate.Domain.AuthenticationHistory.AuthenticationEvent authenticationEvent, CancellationToken cancellationToken)
+    {
+        Attempted.Add(authenticationEvent);
+        if (Failure is not null)
+        {
+            return Task.FromException<bool>(Failure);
+        }
+
+        if (AlreadyExists)
+        {
+            return Task.FromResult(false);
+        }
+
+        Saved.Add(authenticationEvent);
+        return Task.FromResult(true);
+    }
+}

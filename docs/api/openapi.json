@@ -1219,6 +1219,14 @@
           },
           "capabilities": {
             "$ref": "#/components/schemas/UserCapabilitiesResponse"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every `resource:action` permission the caller holds (`items:read`, `items:write`,\n`admin:manage` in the shipped vocabulary). Reported next to the capability flags, never inside\nRoles: a permission is not a seat.",
+            "nullable": true
           }
         },
         "additionalProperties": false,

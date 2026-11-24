@@ -96,8 +96,8 @@ builder.Services.AddApiRateLimiting(builder.Configuration);
 // Cross-origin policy for the deployed frontend. Origins come from Cors:AllowedOrigins.
 builder.Services.AddApiCors(builder.Configuration);
 
-// Bearer authentication (Keycloak, or the selected cloud's IdP) + role-based authorization.
-builder.Services.AddApiAuthentication(builder.Configuration);
+// Bearer authentication (Keycloak JWTs forwarded by the gateway) + seat-or-permission authorization.
+builder.Services.AddApiAuthentication(builder.Configuration, builder.Environment);
 
 // Idempotency-Key handling for unsafe requests (see IdempotencyMiddleware, wired below).
 builder.Services.Configure<IdempotencyOptions>(builder.Configuration.GetSection(IdempotencyOptions.SectionName));
@@ -128,6 +128,11 @@ if (!app.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(builder.Config
         "distributed cache. This is process-local and will NOT be shared across instances; configure " +
         "a managed Redis before running more than one instance.");
 }
+
+// Pre-warm the Keycloak JWKS cache before the first request, so an unreachable identity endpoint
+// announces itself as a startup warning rather than as a stranger's failed sign-in. A no-op when
+// Keycloak:JwksUri is blank, and never fatal.
+await app.PreWarmKeycloakSigningKeysAsync();
 // ---------------------------------------------------------------------------------------------
 
 // MIDDLEWARE ORDER IS LOAD-BEARING. Read the comments before reordering anything below.
@@ -173,11 +178,17 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors(Cors.FrontendPolicy);
 
-// Rate limiting BEFORE authentication: rejecting an over-quota request should not first cost a
-// signature validation and a JWKS lookup, which is precisely the work an attacker wants to force.
-app.UseRateLimiter();
+// Rate limiting AFTER authentication, deliberately. The limiter partitions by user, and before
+// UseAuthentication `context.User` is always anonymous: every caller fell into the client-IP bucket,
+// which behind the gateway is the proxy's address, so ALL users shared one bucket. The cost accepted
+// is one JWT validation (cached JWKS, no network) per over-quota request; anonymous floods are still
+// bounded per client IP, and health probes opt out via DisableRateLimiting below.
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+
+// Records each gateway sign-in once, after the JWT is verified and the caller has passed authorization.
+app.UseMiddleware<SignInRecordingMiddleware>();
 
 // Idempotency-Key replay for unsafe requests. AFTER authentication and authorization, and that
 // order is the security property: a key is scoped to the authenticated caller, so the principal must
@@ -192,15 +203,17 @@ app.MapControllers();
 // aliased to LIVENESS, not readiness, so a transient database blip cannot flap a healthy instance
 // out of the load balancer's rotation for a dependency hiccup it would have recovered from.
 //
-// All three are exempt from the global rate limiter: a probe polls on its own fixed interval and a
-// shared egress IP or a tight interval could otherwise exhaust the quota and take the instance out
-// of rotation for a rate-limit hit rather than a real health problem.
-app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).DisableRateLimiting();
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).DisableRateLimiting();
+// All three are exempt from the deny-by-default FALLBACK authorization policy (AllowAnonymous), or
+// every probe would answer 401 — see AuthenticationSetup. They are also exempt from the global rate
+// limiter: a probe polls on its own fixed interval and a shared egress IP or a tight interval could
+// otherwise exhaust the quota and take the instance out of rotation for a rate-limit hit rather than
+// a real health problem.
+app.MapHealthChecks("/health", new HealthCheckOptions { Predicate = _ => false }).DisableRateLimiting().AllowAnonymous();
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false }).DisableRateLimiting().AllowAnonymous();
 app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
-}).DisableRateLimiting();
+}).DisableRateLimiting().AllowAnonymous();
 
 await app.RunAsync();
 

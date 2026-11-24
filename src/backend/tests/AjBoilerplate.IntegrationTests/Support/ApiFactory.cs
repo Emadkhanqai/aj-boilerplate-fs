@@ -51,9 +51,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     /// <summary>
     /// How many requests the test host allows per rate-limit window.
     ///
-    /// The production default is 100 per 60 seconds, partitioned by <c>User.Identity.Name</c> — and
-    /// <see cref="TestAuthHandler"/> gives every authenticated test caller the same <c>name</c>
-    /// claim, so THE ENTIRE SUITE SHARES ONE PARTITION. The whole collection runs well inside a
+    /// The production default is 100 per 60 seconds, partitioned by the caller's stable id. Every
+    /// test that does not pass its own user id authenticates as <see cref="TestAuthHandler.DefaultUserId"/>,
+    /// so most of the suite still shares one partition. The whole collection runs well inside a
     /// single 60-second window, so at the production limit the suite eventually 429s itself, and the
     /// failure lands on whichever unrelated test happened to be running when the quota ran out. That
     /// is a property of how this suite authenticates, not of the code under test.
@@ -81,6 +81,16 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         var client = CreateClient();
         client.DefaultRequestHeaders.Add(TestAuthHandler.RoleHeader, role);
+        return client;
+    }
+
+    /// <summary>A client that holds the given permissions and NO seat — the caller the
+    /// seat-OR-permission policies exist to admit.</summary>
+    public HttpClient CreateClientWithPermissions(string userId, params string[] permissions)
+    {
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(TestAuthHandler.PermissionHeader, string.Join(',', permissions));
+        client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, userId);
         return client;
     }
 
