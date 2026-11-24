@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\AjBoilerplate.Infrastructure\AjBoilerplate.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\AjBoilerplate.Api\AjBoilerplate.Api.csproj" />
     <ProjectReference Include="..\..\src\AjBoilerplate.Contracts\AjBoilerplate.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\AjBoilerplate.Auth\AjBoilerplate.Auth.csproj" />
   </ItemGroup>
 
 </Project>
