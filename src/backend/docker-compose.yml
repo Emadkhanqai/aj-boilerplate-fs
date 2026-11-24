@@ -51,7 +51,7 @@ services:
       # the OS resolver and raw TCP both succeed.
       ConnectionStrings__Default: "Server=app-db;Database=AppDb;User Id=sa;Password=${MSSQL_SA_PASSWORD:?set MSSQL_SA_PASSWORD in .env};TrustServerCertificate=True;IPAddressPreference=IPv4First;"
       ConnectionStrings__Redis: "app-redis:6379"
-      # gcp | azure — selects the secrets provider and the authN issuer at the composition root.
+      # gcp | azure — selects the secrets provider at the composition root; it does not select an identity issuer.
       CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gcp}
       # Enables Swagger UI (Program.cs gates UseSwagger()/UseSwaggerUI() behind IsDevelopment()).
       ASPNETCORE_ENVIRONMENT: Development

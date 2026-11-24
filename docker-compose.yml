@@ -193,8 +193,8 @@ services:
       # Enables Swagger UI — Program.cs gates UseSwagger()/UseSwaggerUI() behind IsDevelopment().
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      # gcp | azure — selects the secrets provider and the authN issuer at the composition
-      # root. Neither store is configured here, so `AddCloudSecrets` is a no-op and
+      # gcp | azure — selects the secrets provider at the composition root; it does not select an
+      # identity issuer (ADR-0012). Neither store is configured here, so `AddCloudSecrets` is a no-op and
       # configuration falls back to appsettings and these variables.
       CLOUD_PROVIDER: ${CLOUD_PROVIDER:-gcp}
       # The API accepts only Keycloak JWTs for THIS client (azp check); nginx injects them. `iss` is the

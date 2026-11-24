@@ -41,8 +41,11 @@ public sealed class AuthOptions
     public AuthCookieOptions Cookies { get; set; } = new();
 
     /// <summary>
-    /// Permit plain http to <c>Keycloak:TokenEndpointUrl</c>, which receives a client secret and a user's
-    /// token. Default false: http is then refused at start-up outside Development.
+    /// Permit plain http to every upstream the start-up validator checks: <c>Entra:Authority</c>,
+    /// <c>Entra:AuthorizeEndpointUrl</c>, <c>Entra:TokenEndpointUrl</c>, <c>Keycloak:BaseUrl</c> and
+    /// <c>Keycloak:TokenEndpointUrl</c>. Several of them receive a client secret or a user's token.
+    /// Default false: an http URL for any of them is then refused at start-up outside Development
+    /// (<see cref="AuthOptionsValidator"/>).
     /// </summary>
     public bool AllowInsecureUpstreams { get; set; }
 }

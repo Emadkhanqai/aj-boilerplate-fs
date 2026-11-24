@@ -3,11 +3,10 @@ namespace AjBoilerplate.Infrastructure.Cloud;
 /// <summary>The cloud this deployment runs on.</summary>
 public enum CloudProvider
 {
-    /// <summary>Google Cloud: Secret Manager for secrets, Google Cloud Identity for authentication.</summary>
+    /// <summary>Google Cloud: Secret Manager for secrets.</summary>
     Gcp,
 
-    /// <summary>Microsoft Azure: Key Vault (+ Managed Identity) for secrets, Microsoft Entra ID for
-    /// authentication.</summary>
+    /// <summary>Microsoft Azure: Key Vault (+ Managed Identity) for secrets.</summary>
     Azure,
 }
 
@@ -15,13 +14,11 @@ public enum CloudProvider
 /// Bound from the <c>Cloud</c> config section, whose <c>Provider</c> key is conventionally supplied
 /// as the <c>CLOUD_PROVIDER</c> environment variable (see <c>Program.cs</c>, which maps it).
 ///
-/// Exactly two concerns branch on this, and both are behind an interface:
-/// <list type="bullet">
-///   <item><b>Secrets</b> — <c>ISecretsProvider</c> plus the boot-time configuration source.</item>
-///   <item><b>Authentication</b> — which issuer's tokens are accepted. Authorization is Keycloak on
-///     both clouds and never branches.</item>
-/// </list>
-/// Notably, the CACHE does not branch. Memorystore for Redis and Azure Cache for Redis both speak
+/// Exactly one concern branches on this, and it is behind an interface: <b>secrets</b>
+/// (<c>ISecretsProvider</c> plus the boot-time configuration source). Authentication does NOT
+/// branch: sign-in is the Auth service against Microsoft Entra ID and the API validates Keycloak
+/// JWTs on both clouds (ADR-0012, which supersedes the identity half of ADR-0002).
+/// Notably, the CACHE does not branch either. Memorystore for Redis and Azure Cache for Redis both speak
 /// the Redis wire protocol, so the same <c>ConnectionStrings:Redis</c> and the same
 /// <c>AddStackExchangeRedisCache</c> registration serve both — the difference lives entirely in
 /// <c>infra/</c>. The database does not branch either (SQL Server on both).
