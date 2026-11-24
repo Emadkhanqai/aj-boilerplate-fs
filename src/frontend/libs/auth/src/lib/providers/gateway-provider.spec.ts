@@ -103,6 +103,16 @@ describe('gateway provider', () => {
       expect(navigate).toHaveBeenCalledWith('/logged-out');
     });
 
+    it('does not parse the followed 303 /logged-out HTML page as JSON', async () => {
+      const done = provider.signOut();
+
+      const req = http.expectOne('/auth/logout');
+      expect(req.request.responseType).toBe('text');
+      req.flush('<!doctype html><title>Signed out</title>');
+
+      await expect(done).resolves.toBeUndefined();
+    });
+
     it('still leaves for /logged-out when the POST fails', async () => {
       const done = provider.signOut();
 

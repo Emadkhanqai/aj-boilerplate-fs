@@ -73,7 +73,10 @@ export function createGatewayProvider(): AuthProviderApi {
       markSignedOut();
       try {
         // POST, never GET: a GET would be triggerable by any third-party page.
-        await firstValueFrom(http.post('/auth/logout', null, { observe: 'response' }));
+        // `responseType: 'text'`: the Auth service answers `303 /logged-out`, the browser follows it, and
+        // the body is an HTML page. The default JSON parse would throw "Unexpected token '<'" into the
+        // global error handler on every sign-out.
+        await firstValueFrom(http.post('/auth/logout', null, { observe: 'response', responseType: 'text' }));
       } finally {
         gatewayNavigation.navigate('/logged-out');
       }
