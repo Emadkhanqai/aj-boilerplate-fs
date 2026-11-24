@@ -284,6 +284,18 @@ scripts/derive.sh --write --clean    # produce both trees under dist/derive/
 It prints the manual steps it cannot do. Do them, review the whole diff against each
 published repository, then push deliberately.
 
+What the derivation decides for you, so you do not re-decide it in a derived repository:
+
+- **One OpenAPI document**, `docs/api/openapi.json`, written by `src/backend/scripts/generate-openapi.sh`
+  and shipped to both derived repositories at the same path. The frontend keeps no copy:
+  `src/frontend/scripts/generate-api.mjs` and the `UserProfile` contract spec look the document up,
+  so the same files work in `fs` and in `fe`.
+- **One `.env.example`**, at the root, with `# @derive keep=fs,be` blocks. `be` gets the API and Auth
+  service keys, `fe` the web runtime keys. Edit the root file, never a derived one.
+- **Markdown links** are re-pointed per repository: to where the target lands, or, for the other
+  stack and for files that do not ship (`scripts/derive.sh`), to GitHub in `aj-boilerplate-fs`.
+- **`scripts/derive.sh` and `scripts/derive-links.py` do not ship**; they only run in this tree.
+
 The release and tagging convention is in [CHANGELOG.md](CHANGELOG.md). The background is
 [ADR-0006](docs/adr/0006-three-repository-split.md) and
 [ADR-0011](docs/adr/0011-scripted-one-way-derivation-for-the-three-repositories.md).

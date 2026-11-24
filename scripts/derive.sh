@@ -36,6 +36,16 @@
 #      anything else untracked cannot leak into a published repository, because the file
 #      list comes from `git ls-files` rather than from the filesystem.
 #
+# DECISIONS RECORDED HERE BECAUSE THEY ARE DERIVATION RULES (ADR-0011 explains the principle)
+#   * ONE OpenAPI document, docs/api/openapi.json, written by src/backend/scripts/generate-openapi.sh
+#     and shared verbatim into both derived repositories. The frontend does not keep a copy:
+#     src/frontend/scripts/generate-api.mjs and the UserProfile contract spec look the document up
+#     (beside the package, else two levels up), so they are identical in fs and fe.
+#   * ONE .env.example, at the root, with `# @derive keep=...` blocks (see env_example_for).
+#   * Markdown links are re-pointed per repository by scripts/derive-links.py: where the target
+#     lands in the derived repository, else on GitHub in aj-boilerplate-fs (the other stack).
+#   * scripts/derive.sh and scripts/derive-links.py do not ship: they only run in the full-stack tree.
+#
 # WHAT IT DOES NOT DO: it does not create git repositories, does not commit, and does not
 # push. It produces two directories. What happens to them is a human decision.
 
@@ -46,6 +56,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 MARKER='.derived-by-derive-sh'
 
+# Where cross-stack links point once the other stack is not in the derived repository. Derived from
+# this clone's `origin`, so a fork derives links to itself; override with FS_URL=... for a mirror.
+FS_URL="${FS_URL:-}"
+
 # Paths that exist in this tree but must never reach a derived repository.
 # One entry per line, matched as a prefix against the repository-relative path.
 #
@@ -55,6 +69,7 @@ MARKER='.derived-by-derive-sh'
 COMMON_DROP='
 docker-compose.yml
 scripts/derive.sh
+scripts/derive-links.py
 '
 
 BE_DROP='
@@ -144,6 +159,17 @@ case "$OUT_BASE" in
   /*) ;;
   *)  OUT_BASE="$PWD/$OUT_BASE" ;;
 esac
+
+if [ -z "$FS_URL" ]; then
+  FS_URL="$(git -C "$ROOT" remote get-url origin 2>/dev/null | sed -e 's#^git@github.com:#https://github.com/#' -e 's#\.git$##')"
+fi
+if [ "$WRITE" -eq 1 ]; then
+  case "$FS_URL" in
+    https://*) ;;
+    *) die "cannot work out the aj-boilerplate-fs URL from 'origin' (got '$FS_URL'); set FS_URL=https://github.com/<org>/aj-boilerplate-fs" ;;
+  esac
+  command -v python3 >/dev/null 2>&1 || die 'python3 is required to re-point Markdown links (scripts/derive-links.py).'
+fi
 
 SOURCE_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
 SOURCE_DIRTY=''
@@ -279,6 +305,36 @@ env_example_for() {
   ' "$_src" | sed -e 's#src/backend/##g' -e 's#src/frontend/##g' | cat -s
 }
 
+# classify <source path>   sets C_KIND (shared|promoted), C_REL, C_OUT (the derived path) and C_COLLIDE;
+# returns 1 when the file is dropped. Uses the derive() variables `promoted`, `drop_list`, `target`.
+#
+#   1. Dropped outright — the other stack, and files that only make sense full-stack.
+#   2. Promoted — src/<stack>/x becomes x at the root.
+#   3. Collision. A promoted file can land on a shared file of the same name — most obviously
+#      README.md, CLAUDE.md, .editorconfig, .gitignore, .dockerignore. The shared file is NOT
+#      silently overwritten; both are kept, the promoted one under a suffixed name, and the
+#      collision is reported. A root file that is itself being dropped is not a collision: the
+#      promoted file takes the root name cleanly. `docker-compose.yml` is the case that matters —
+#      the full-stack compose is dropped, and the stack's own compose becomes the one at the root,
+#      which is exactly what a single-stack repository wants.
+classify() {
+  _f="$1"
+  if matches_any "$_f" "$drop_list" || matches_any "$_f" "$COMMON_DROP"; then
+    return 1
+  fi
+  case "$_f" in
+    "$promoted"/*) C_REL="${_f#"$promoted"/}"; C_KIND='promoted' ;;
+    *)             C_REL="$_f";               C_KIND='shared' ;;
+  esac
+  C_OUT="$C_REL"; C_COLLIDE=0
+  if [ "$C_KIND" = 'promoted' ] && [ -e "$ROOT/$C_REL" ] \
+     && ! matches_any "$C_REL" "$COMMON_DROP" && ! matches_any "$C_REL" "$drop_list"; then
+    C_COLLIDE=1
+    C_OUT="$(suffixed_name "$C_REL" "$target")"
+  fi
+  return 0
+}
+
 # ---------------------------------------------------------------------------
 # derive <target>   target = be | fe
 # ---------------------------------------------------------------------------
@@ -327,43 +383,34 @@ or pass a different --out."
     } > "$dest/$MARKER"
   fi
 
+  # source path -> derived path for every file that will exist, so a link can be re-pointed at where
+  # its target LANDS (scripts/derive-links.py). Built first because a link can point at a file the
+  # loop below has not reached yet. Lives beside the derived trees, never inside one, and is
+  # truncated rather than deleted on each run.
+  map_file="$OUT_BASE/.derive-map-$target.tsv"
+  if [ "$WRITE" -eq 1 ]; then
+    : > "$map_file"
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      classify "$f" && printf '%s\t%s\n' "$f" "$C_OUT" >> "$map_file"
+    done <<EOF
+$files
+EOF
+  fi
+
   while IFS= read -r f; do
     [ -z "$f" ] && continue
 
-    # 1. Dropped outright — the other stack, and files that only make sense full-stack.
-    if matches_any "$f" "$drop_list" || matches_any "$f" "$COMMON_DROP"; then
+    # Dropped / promoted / collision — see classify().
+    if ! classify "$f"; then
       n_dropped=$((n_dropped + 1))
       continue
     fi
-
-    # 2. Promoted — src/<stack>/x becomes x at the root.
-    case "$f" in
-      "$promoted"/*)
-        rel="${f#"$promoted"/}"
-        kind='promoted'
-        ;;
-      *)
-        rel="$f"
-        kind='shared'
-        ;;
-    esac
-
-    # 3. Collision. A promoted file can land on a shared file of the same name — most
-    #    obviously README.md, CLAUDE.md, .editorconfig, .gitignore, .dockerignore. The
-    #    shared file is NOT silently overwritten; both are kept, the promoted one under a
-    #    suffixed name, and the collision is reported.
-    #
-    #    A root file that is itself being dropped is not a collision: the promoted file
-    #    takes the root name cleanly. `docker-compose.yml` is the case that matters —
-    #    the full-stack compose is dropped, and the stack's own compose becomes the one
-    #    at the root, which is exactly what a single-stack repository wants.
-    out_rel="$rel"
-    if [ "$kind" = 'promoted' ] && [ -e "$ROOT/$rel" ] \
-       && ! matches_any "$rel" "$COMMON_DROP" && ! matches_any "$rel" "$drop_list"; then
+    kind="$C_KIND"; out_rel="$C_OUT"
+    if [ "$C_COLLIDE" -eq 1 ]; then
       n_collide=$((n_collide + 1))
-      out_rel="$(suffixed_name "$rel" "$target")"
       collisions="${collisions}
-      ${f}  ->  ${out_rel}   (root ${rel} kept as-is)"
+      ${f}  ->  ${out_rel}   (root ${C_REL} kept as-is)"
     fi
 
     if matches_any "$out_rel" "$REVIEW_REQUIRED"; then
@@ -383,6 +430,11 @@ or pass a different --out."
         env_example_for "$target" "$ROOT/$f" > "$dest/$out_rel"
       else
         cp -p "$ROOT/$f" "$dest/$out_rel"
+        # Links first, text rewrite second: the rewrite would turn a GitHub URL containing
+        # `src/backend/` into `./`.
+        case "$out_rel" in
+          *.md) python3 "$ROOT/scripts/derive-links.py" "$map_file" "$ROOT" "$FS_URL" "$f" "$out_rel" "$dest/$out_rel" "$promoted" ;;
+        esac
         [ "$do_rewrite" -eq 1 ] && rewrite_paths "$dest/$out_rel" "$promoted"
       fi
     fi
