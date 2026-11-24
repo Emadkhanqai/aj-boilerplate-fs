@@ -44,7 +44,11 @@ export interface PagedResponse<T> {
 export type ItemStatus = 'Draft' | 'Active' | 'Archived';
 
 /** All valid `ItemStatus` values, for dropdown options. */
-export const ITEM_STATUSES: readonly ItemStatus[] = ['Draft', 'Active', 'Archived'];
+export const ITEM_STATUSES: readonly ItemStatus[] = [
+  'Draft',
+  'Active',
+  'Archived',
+];
 
 export interface ItemResponse {
   id: string;
