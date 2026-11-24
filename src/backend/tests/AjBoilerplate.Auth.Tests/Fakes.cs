@@ -95,12 +95,28 @@ internal sealed class InMemorySessionStore : ISessionStore
         return Task.FromResult(false);
     }
 
-    public Task DeleteAsync(string sessionKey, string subject, CancellationToken cancellationToken) =>
-        EndAsync(sessionKey, subject, cancellationToken);
+    /// <summary>Every end the store was asked to make, in order: the reason and detail a portal would be told.</summary>
+    public ConcurrentQueue<(string SessionKey, string Subject, SessionEnd Ending)> Ended { get; } = new();
 
-    public Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken)
+    public Task DeleteAsync(string sessionKey, string subject, CancellationToken cancellationToken)
+    {
+        Sessions.TryRemove(sessionKey, out _);
+        if (Index.TryGetValue(subject, out var set))
+        {
+            set.Remove(sessionKey);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken)
     {
         var removed = Sessions.TryRemove(sessionKey, out _);
+        if (removed)
+        {
+            Ended.Enqueue((sessionKey, subject, ending));
+        }
+
         if (Index.TryGetValue(subject, out var set))
         {
             set.Remove(sessionKey);
@@ -156,6 +172,20 @@ internal sealed class InMemoryLoginStore : ILoginStateStore
 
     public Task<LoginState?> TakeAsync(string state, CancellationToken cancellationToken) =>
         Task.FromResult(States.TryRemove(state, out var s) ? s : null);
+}
+
+internal sealed class InMemoryHandoffTicketStore(TimeProvider time) : IHandoffTicketStore
+{
+    public ConcurrentDictionary<string, (HandoffTicket Ticket, DateTimeOffset ExpiresAt)> Tickets { get; } = new();
+
+    public Task SaveAsync(string ticketKey, HandoffTicket ticket, TimeSpan lifetime, CancellationToken cancellationToken)
+    {
+        Tickets[ticketKey] = (ticket, time.GetUtcNow() + lifetime);
+        return Task.CompletedTask;
+    }
+
+    public Task<HandoffTicket?> TakeAsync(string ticketKey, CancellationToken cancellationToken) =>
+        Task.FromResult(Tickets.TryRemove(ticketKey, out var held) && held.ExpiresAt > time.GetUtcNow() ? held.Ticket : null);
 }
 
 internal sealed class FakeLock : IDistributedLock
@@ -290,8 +320,14 @@ internal static class Jwt
 
 internal static class TestConfig
 {
-    public const string Origin = "https://app.example.com";
+    public const string Host = "app.example.com";
+    public const string Origin = "https://" + Host;
     public const string ClientId = "my-app";
+
+    /// <summary>The second portal of <see cref="TwoPortals"/>.</summary>
+    public const string OtherHost = "other.example.com";
+    public const string OtherOrigin = "https://" + OtherHost;
+    public const string OtherClientId = "other-app";
     public const string SessionCookie = "__Host-app_sid";
 
     public static AuthOptions Options() => new()
@@ -309,7 +345,17 @@ internal static class TestConfig
         },
     };
 
+    /// <summary>Portal #0 as in <see cref="Options"/>, plus one further portal on its own host: the shape a hand-off needs.</summary>
+    public static AuthOptions TwoPortals()
+    {
+        var options = Options();
+        options.Portals.Add(new PortalOptions { Host = OtherHost, ClientId = OtherClientId, ClientSecret = "kc-secret-2", DisplayName = "Other App" });
+        return options;
+    }
+
     public static IOptions<AuthOptions> Wrap(AuthOptions options) => Microsoft.Extensions.Options.Options.Create(options);
+
+    public static PortalRegistry Portals(AuthOptions options) => new(Wrap(options));
 }
 
 internal static class Log

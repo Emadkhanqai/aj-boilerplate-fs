@@ -64,7 +64,124 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
             failures.Add("Auth:Cookies:Secure=false is refused outside Development.");
         }
 
+        ValidatePortals(options, failures);
+        ValidateAdmin(options, failures);
+        ValidateEvents(options, failures);
+
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
+    }
+
+    private void ValidatePortals(AuthOptions options, List<string> failures)
+    {
+        ValidateSessionEvents("Auth:Portal:SessionEvents", options.Portal.SessionEvents, options, failures);
+
+        var hosts = new HashSet<string>(StringComparer.Ordinal);
+        if (Uri.TryCreate(options.PublicOrigin, UriKind.Absolute, out var origin))
+        {
+            hosts.Add(origin.Host.ToLowerInvariant());
+        }
+
+        var clientIds = new HashSet<string>(StringComparer.Ordinal) { options.Portal.ClientId };
+        for (var i = 0; i < options.Portals.Count; i++)
+        {
+            var portal = options.Portals[i];
+            var key = $"Auth:Portals:{i}";
+            if (string.IsNullOrWhiteSpace(portal.ClientId) || string.IsNullOrWhiteSpace(portal.ClientSecret))
+            {
+                failures.Add($"{key}:ClientId and ClientSecret are required.");
+            }
+            else if (!clientIds.Add(portal.ClientId))
+            {
+                failures.Add($"{key}:ClientId '{portal.ClientId}' is already used by another portal.");
+            }
+
+            if (!HostName.IsValid(portal.Host))
+            {
+                failures.Add($"{key}:Host must be a bare DNS host name (no scheme, no port, no path), e.g. app2.example.com.");
+            }
+            else if (!hosts.Add(portal.Host.ToLowerInvariant()))
+            {
+                failures.Add($"{key}:Host '{portal.Host}' is already used by another portal (portal #0's host is Auth:PublicOrigin's).");
+            }
+
+            if (!string.IsNullOrEmpty(portal.LoggedOutPath) && !RedirectTarget.IsSafe(portal.LoggedOutPath))
+            {
+                failures.Add($"{key}:LoggedOutPath must be a local absolute path such as /logged-out.");
+            }
+
+            ValidateSessionEvents($"{key}:SessionEvents", portal.SessionEvents, options, failures);
+        }
+    }
+
+    private void ValidateSessionEvents(string key, SessionEventsOptions events, AuthOptions options, List<string> failures)
+    {
+        if (!events.IsConfigured)
+        {
+            if (!string.IsNullOrWhiteSpace(events.Audience))
+            {
+                failures.Add($"{key}:Audience is set but {key}:Url is not; set both or neither.");
+            }
+
+            if (events.UsesKey)
+            {
+                failures.Add($"{key}:Key is set but {key}:Url is not; set both or neither.");
+            }
+
+            return;
+        }
+
+        if (!Uri.TryCreate(events.Url, UriKind.Absolute, out var url)
+            || (url.Scheme != Uri.UriSchemeHttps && url.Scheme != Uri.UriSchemeHttp)
+            || !string.IsNullOrEmpty(url.Query)
+            || !string.IsNullOrEmpty(url.Fragment))
+        {
+            failures.Add($"{key}:Url must be an absolute http or https URL with no query.");
+            return;
+        }
+
+        // An audience with a path is refused by a Google-IAM-fronted receiver, indistinguishably from a missing invoker grant:
+        // refuse it here, where the message can say which it is.
+        if (!Uri.TryCreate(events.ResolvedAudience, UriKind.Absolute, out var audience)
+            || audience.AbsolutePath != "/"
+            || !string.IsNullOrEmpty(audience.Query))
+        {
+            failures.Add($"{key}:Audience must be an origin (scheme and host, no path), e.g. https://api.example.com.");
+        }
+
+        // The call carries a shared key or a Google ID token: plain http would put either on the wire in the clear.
+        ValidateUpstream($"{key}:Url", events.Url, required: true, options, failures);
+    }
+
+    private void ValidateAdmin(AuthOptions options, List<string> failures)
+    {
+        var admin = options.Admin;
+        ValidateUpstream("Auth:Admin:Keycloak:BaseUrl", admin.Keycloak.BaseUrl, required: false, options, failures);
+        if (!string.IsNullOrWhiteSpace(admin.Audience) != (admin.AllowedCallers.Count > 0))
+        {
+            failures.Add("Auth:Admin:Audience and Auth:Admin:AllowedCallers must be set together or not at all.");
+        }
+
+        foreach (var path in admin.ManagedGroupPaths)
+        {
+            if (string.IsNullOrWhiteSpace(path) || path[0] != '/' || path.Length < 2 || path.EndsWith('/'))
+            {
+                failures.Add($"Auth:Admin:ManagedGroupPaths entry '{path}' must be a Keycloak group path such as /my-app (leading slash, no trailing slash).");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(admin.Keycloak.ClientId) != !string.IsNullOrWhiteSpace(admin.Keycloak.ClientSecret))
+        {
+            failures.Add("Auth:Admin:Keycloak:ClientId and ClientSecret must be set together or not at all.");
+        }
+    }
+
+    private static void ValidateEvents(AuthOptions options, List<string> failures)
+    {
+        var events = options.Events;
+        if (!string.IsNullOrWhiteSpace(events.Audience) != !string.IsNullOrWhiteSpace(events.PushServiceAccount))
+        {
+            failures.Add("Auth:Events:Audience and Auth:Events:PushServiceAccount must be set together or not at all.");
+        }
     }
 
     private void ValidatePublicOrigin(AuthOptions options, List<string> failures)

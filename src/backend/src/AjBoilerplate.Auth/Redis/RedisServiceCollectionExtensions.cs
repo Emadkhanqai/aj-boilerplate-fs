@@ -35,6 +35,7 @@ public static class RedisServiceCollectionExtensions
         services.AddSingleton<RedisSessionStore>();
         services.AddKeyedSingleton<ISessionStore, CacheSessionStore>(DurableSessionStore.CacheServiceKey);
         services.AddSingleton<ILoginStateStore, RedisLoginStateStore>();
+        services.AddSingleton<IHandoffTicketStore, RedisHandoffTicketStore>();
         services.AddSingleton<IDistributedLock, RedisDistributedLock>();
         services.AddSingleton<IRevokedSessionMarks, RedisRevokedSessionMarks>();
 

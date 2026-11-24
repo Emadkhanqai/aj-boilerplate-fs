@@ -1,9 +1,12 @@
 using AjBoilerplate.Auth.Abstractions;
 using AjBoilerplate.Auth.Configuration;
 using AjBoilerplate.Auth.Endpoints;
+using AjBoilerplate.Auth.Events;
 using AjBoilerplate.Auth.Identity;
+using AjBoilerplate.Auth.Observability;
 using AjBoilerplate.Auth.Redis;
 using AjBoilerplate.Auth.Security;
+using AjBoilerplate.Auth.SessionEvents;
 using AjBoilerplate.Auth.Sessions;
 using AjBoilerplate.Auth.Sql;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -45,6 +48,7 @@ public static class Program
             .ValidateOnStart();
 
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<PortalRegistry>();
 
         builder.Services.AddHttpClient<IEntraClient, EntraClient>((sp, http) =>
             http.Timeout = sp.GetRequiredService<IOptions<AuthOptions>>().Value.Entra.Timeout);
@@ -60,6 +64,24 @@ public static class Program
         builder.Services.AddScoped<SessionValidator>();
         builder.Services.AddScoped<SignInService>();
         builder.Services.AddScoped<ForceRefreshHandler>();
+        builder.Services.AddScoped<HandoffService>();
+        builder.Services.AddScoped<UserAdminService>();
+
+        // The directory behind /internal/admin: the Keycloak Admin REST API once a dedicated admin client is configured, else a stand-in
+        // that answers 501 rather than an empty list.
+        builder.Services.AddHttpClient(KeycloakAdminClient.HttpClientName, http =>
+            http.Timeout = builder.Configuration.GetSection($"{AuthOptions.SectionName}:Admin:Keycloak:Timeout").Get<TimeSpan?>() ?? TimeSpan.FromSeconds(10));
+        builder.Services.AddSingleton<IDirectoryAdmin>(sp =>
+            sp.GetRequiredService<IOptions<AuthOptions>>().Value.Admin.Keycloak.IsConfigured
+                ? ActivatorUtilities.CreateInstance<KeycloakAdminClient>(sp)
+                : new NotConfiguredDirectoryAdmin());
+
+        // Google ID token checks: the /auth/events push and the opt-in admin caller. Disabled until configured, but registered
+        // always, so the endpoints can refuse (404) rather than fail to resolve.
+        builder.Services.AddHttpClient(GoogleIdTokenVerifier.HttpClientName, http => http.Timeout = TimeSpan.FromSeconds(5));
+        builder.Services.AddSingleton<GoogleIdTokenVerifier>();
+
+        builder.Services.AddSessionEndedDelivery();
 
         var app = builder.Build();
 
@@ -69,7 +91,11 @@ public static class Program
             // browser joins a line here. Sanitised, not trusted: anything that is not a short id-shaped value is
             // replaced by Kestrel's own trace id.
             var supplied = http.Request.Headers["X-Request-Id"].ToString();
-            using (LogContext.PushProperty("CorrelationId", IsIdShaped(supplied) ? supplied : http.TraceIdentifier))
+            var correlation = IsIdShaped(supplied) ? supplied : http.TraceIdentifier;
+
+            // Ambient, for the one place far from HTTP that needs it: the session-ended event a request causes carries it.
+            RequestCorrelation.Current = correlation;
+            using (LogContext.PushProperty("CorrelationId", correlation))
             {
                 await next(http);
             }
@@ -121,7 +147,9 @@ public static class Program
             ("Auth:Entra:TokenEndpointUrl", options.Entra.TokenEndpointUrl),
             ("Auth:Keycloak:BaseUrl", options.Keycloak.BaseUrl),
             ("Auth:Keycloak:TokenEndpointUrl", options.Keycloak.TokenEndpointUrl),
-        })
+            ("Auth:Admin:Keycloak:BaseUrl", options.Admin.Keycloak.BaseUrl),
+            ("Auth:Portal:SessionEvents:Url", options.Portal.SessionEvents.Url),
+        }.Concat(options.Portals.Select((p, i) => ($"Auth:Portals:{i}:SessionEvents:Url", p.SessionEvents.Url))))
         {
             if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttp)
             {

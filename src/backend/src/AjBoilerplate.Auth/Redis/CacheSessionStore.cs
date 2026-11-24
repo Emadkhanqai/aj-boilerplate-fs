@@ -60,7 +60,7 @@ internal sealed partial class CacheSessionStore : ISessionStore
     public Task DeleteAsync(string sessionKey, string subject, CancellationToken cancellationToken) =>
         SwallowAsync("delete", () => _inner.DeleteAsync(sessionKey, subject, cancellationToken));
 
-    public async Task<bool> EndAsync(string sessionKey, string subject, CancellationToken cancellationToken)
+    public async Task<bool> EndAsync(string sessionKey, string subject, SessionEnd ending, CancellationToken cancellationToken)
     {
         await DeleteAsync(sessionKey, subject, cancellationToken);
         return true;

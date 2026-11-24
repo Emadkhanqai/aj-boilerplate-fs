@@ -15,7 +15,7 @@ public sealed class SqlModelTests
     public void The_session_table_is_in_the_auth_schema_with_a_key_column_exactly_as_wide_as_a_storage_key()
     {
         using var db = Context();
-        var entity = db.GetService<IDesignTimeModel>().Model.GetEntityTypes().Single();
+        var entity = db.GetService<IDesignTimeModel>().Model.GetEntityTypes().Single(e => e.GetTableName() == "Sessions");
         var key = entity.FindProperty(nameof(SessionRow.SessionKey))!;
 
         Assert.Equal("auth", entity.GetSchema());

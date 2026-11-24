@@ -26,7 +26,10 @@ the cookie; the JWT and refresh token are encrypted with AES-256-GCM under `Auth
 | `GET /auth/validate` | nginx only |
 | `POST /auth/logout[?next=sign-in]` | browser, same origin only |
 | `GET /auth/roles-version` | the SPA |
-| `POST /internal/admin/users/{subject}/refresh` | trusted callers, header `X-Admin-Api-Key`; 404 while `Auth:Admin:ApiKey` is empty |
+| `POST /auth/events` | the Pub/Sub push of Keycloak user changes; Google ID token; 404 until `Auth:Events:Audience` and `PushServiceAccount` are set |
+| `GET /auth/handoff`, `POST /auth/handoff/redeem` | browser; the cross-portal sign-in hand-off ([`docs/auth/handoff.md`](../../../../docs/auth/handoff.md)), meaningful only with `Auth:Portals` |
+| `GET /auth/no-access` | browser; the "No access" page, shown once after a hand-off redeem that found no role |
+| `POST /internal/admin/users/{subject}/refresh`, `GET`/`POST /internal/admin/users`, `GET /internal/admin/groups`, `GET /internal/admin/members`, `GET`/`PUT /internal/admin/users/{subject}/groups`, `POST /internal/admin/users/{subject}/disable`, `.../enable` | trusted callers, **every route** with header `X-Admin-Api-Key` (or an allowed caller's Google ID token); 404 while neither is configured. The directory behind them is Keycloak's Admin REST API (`Auth:Admin:Keycloak`) |
 | `GET /healthz`, `GET /readyz` | platform probes (liveness touches nothing; readiness pings Redis and SQL) |
 
 `/auth/validate` answers 200 with `X-Auth-Jwt` (and the session headers), 401, 403 with
@@ -42,10 +45,19 @@ dotnet test src/backend/tests/AjBoilerplate.ArchitectureTests # includes the ind
 dotnet run --project src/backend/src/AjBoilerplate.Auth      # http://localhost:5090, needs SQL, Redis and the secrets below
 ```
 
-Folders: `Configuration/` (options and start-up validation), `Endpoints/`, `Sessions/` (sign-in,
-validation, refresh, force-refresh), `Identity/` (Entra and Keycloak clients, JWT claim reading),
-`Security/` (token encryption, session ids, roles version), `Redis/`, `Sql/` (EF Core, migrations,
-sweeper), `Abstractions/`.
+Folders: `Configuration/` (options, the portal registry and start-up validation), `Endpoints/`, `Sessions/` (sign-in,
+validation, refresh, force-refresh, hand-off, user administration, the session-ended dispatcher), `Identity/` (Entra, Keycloak and
+Keycloak Admin clients, JWT claim reading), `Events/` (Google ID token verification, the Pub/Sub message), `SessionEvents/` (the
+session-ended sender and its dispatch loop), `Security/` (token encryption, session ids, roles version), `Redis/`, `Sql/` (EF Core,
+migrations, sweeper, the session-ended outbox), `Abstractions/`, `Observability/`.
+
+Two things worth knowing before you read the code:
+
+- **One portal, or several.** `Auth:Portal` is portal #0 and is all a single-portal project configures; nothing then reads a host.
+  `Auth:Portals:N` adds portals on their own hosts that this one service signs in, and is what the hand-off needs.
+- **Ending a session is a decision that is reported.** Every path that ends one goes through `ISessionStore.EndAsync` with a
+  `SessionEnd` (reason and detail); in SQL that queues the session-ended event in the same transaction as the delete. A fault never
+  ends a session, so it never queues one. See [`docs/auth/session-ended-contract.md`](../../../../docs/auth/session-ended-contract.md).
 
 ## Configuration
 
@@ -61,15 +73,24 @@ or invalid.
 | `ConnectionStrings:AuthDb`, `ConnectionStrings:Redis` | required |
 | `Redis:CaCertPem` | optional private CA for Redis TLS |
 | `Auth:PublicOrigin` | browser-facing origin, no path; builds the redirect URI `/auth/callback` |
-| `Auth:LoggedOutPath` | default `/logged-out` |
+| `Auth:LoggedOutPath` | default `/logged-out` (portal #0's; `Auth:Portals:N:LoggedOutPath` overrides it per portal) |
+| `Auth:ForwardedHostHeader` | default `X-Forwarded-Host`; read only when `Auth:Portals` is non-empty, to choose the portal |
 | `Auth:Cookies:Secure` | default `true`; `false` drops the `__Host-` prefix and the Secure flag, Development only |
 | `Auth:AllowInsecureUpstreams` | permits http for the Entra authority and endpoint URLs and for the Keycloak base and token URLs outside Development |
 | `Auth:Entra:Authority`, `ClientId`, `ClientSecret`, `Scopes`, `RequestOwnClientIdScope`, `Timeout` | identity provider. Defaults are USP staging's Entra ID values: authority `https://login.microsoftonline.com/<tenant-id>`, scopes `openid profile offline_access User.Read` (a Graph scope, so the access token is a Graph token and Keycloak's `oidc` provider can validate it), `RequestOwnClientIdScope=false`. For Azure AD B2C set scopes `openid profile offline_access`, `RequestOwnClientIdScope=true` and `Keycloak:SubjectIssuer` to the B2C alias |
 | `Auth:Entra:AuthorizeEndpointUrl`, `TokenEndpointUrl` | optional full URLs for an issuer whose endpoints are not `{Authority}/oauth2/v2.0/*` (the local Keycloak stand-in); the first is where the browser goes, the second is POSTed by the service |
 | `Auth:Keycloak:BaseUrl`, `Realm`, `SubjectIssuer` (default `oidc`; empty omits the parameter and is refused outside Development), `Scope`, `SendAudience`, `Timeout`, `MaxAttempts`, `RetryBaseDelay`, `TokenEndpointUrl` | token exchange |
-| `Auth:Portal:ClientId`, `ClientSecret` | this app's Keycloak client |
-| `Auth:Admin:ApiKey` | enables the admin endpoint |
+| `Auth:Portal:ClientId`, `ClientSecret`, `DisplayName` | this app's Keycloak client (portal #0), and the name the "No access" page uses |
+| `Auth:Portal:SessionEvents:Url`, `Audience`, `Key` | where portal #0 is told its sessions ended; the call carries `X-Auth-Events-Key` when `Key` is set, else a Google ID token. Nothing is queued without `Url` |
+| `Auth:Portals:N:Host`, `ClientId`, `ClientSecret`, `LoggedOutPath`, `DisplayName`, `SessionEvents:Url`, `Audience`, `Key` | OPTIONAL further portals (hand-off targets); `Host` is a bare DNS host, unique |
+| `Auth:SessionEndDelivery:PollInterval`, `BatchSize`, `ClaimLease`, `Timeout`, `InitialRetryDelay`, `MaxRetryDelay`, `MaxAge`, `Retention` | outbox delivery tuning; the defaults are the contract's (48 h, 15 s doubling to 15 min) |
+| `Auth:Events:Audience`, `Auth:Events:PushServiceAccount` | enable `POST /auth/events`; both or neither |
+| `Auth:Admin:ApiKey` | enables the admin endpoints (`X-Admin-Api-Key`) |
+| `Auth:Admin:Audience`, `Auth:Admin:AllowedCallers` | OPTIONAL: also accept a signature-verified Google ID token from these callers; both or neither |
+| `Auth:Admin:ManagedGroupPaths`, `Auth:Admin:AllowedEmailDomains` | the Keycloak group paths the admin surface may touch (a seat is a group UNDER one), and the e-mail domains a new account may be created for (empty refuses every creation) |
+| `Auth:Admin:Keycloak:ClientId`, `ClientSecret`, `BaseUrl`, `Realm`, `Timeout` | the dedicated Keycloak client (service account, client-credentials) behind the directory routes; `BaseUrl` and `Realm` default to `Auth:Keycloak`'s. Without it the directory routes answer 501 |
 | `Auth:Session:EncryptionKey` | base64 of 32 bytes |
+| `Auth:Session:HandoffTicketLifetime` | how long a hand-off ticket may wait to be redeemed (60 s) |
 | `Auth:Session:IdleTimeout`, `AbsoluteLifetime`, `RefreshSkew`, `RevokedMarkerLifetime`, `LoginStateLifetime`, `RefreshLockLifetime`, `LockPollInterval`, `LockExpiryGrace`, `MinimumServableLifetime`, `SweepInterval` | lifetimes and tuning |
 
 Locally, `Properties/launchSettings.json` sets the non-secret Development values; supply the secrets as

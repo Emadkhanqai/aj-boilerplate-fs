@@ -131,9 +131,13 @@ public sealed class RolesVersionEndpointTests : IAsyncLifetime, IDisposable
         builder.Services.AddSingleton(new RolesVersion(new SessionTokenProtector(SessionTokenProtector.GenerateKey())));
         builder.Services.AddSingleton(new PortalSessionId(new SessionTokenProtector(SessionTokenProtector.GenerateKey())));
         builder.Services.AddSingleton<IRevokedSessionMarks>(new InMemoryRevokedSessionMarks());
+        builder.Services.AddSingleton(new PortalRegistry(TestConfig.Wrap(options)));
         builder.Services.AddScoped<SessionValidator>();
         builder.Services.AddScoped<SignInService>();
         builder.Services.AddScoped<ForceRefreshHandler>();
+        builder.Services.AddSingleton<IHandoffTicketStore>(new InMemoryHandoffTicketStore(TimeProvider.System));
+        builder.Services.AddSingleton<AjBoilerplate.Auth.Events.GoogleIdTokenVerifier>();
+        builder.Services.AddScoped<HandoffService>();
 
         _app = builder.Build();
         _app.MapAuthEndpoints();

@@ -10,6 +10,8 @@ internal static class RedisKeys
 
     public static string Login(string state) => $"{Prefix}login:{state}";
 
+    public static string Handoff(string ticketKey) => $"{Prefix}handoff:{ticketKey}";
+
     public static string Lock(string key) => $"{Prefix}lock:{key}";
 
     public static string Revoked(string sessionKey) => $"{Prefix}revoked:{sessionKey}";
@@ -26,4 +28,7 @@ internal static class SessionFields
     public const string ForceRefresh = "force_refresh";
     public const string CreatedAt = "created";
     public const string LastSeen = "last_seen";
+
+    /// <summary>Storage key of the session whose refresh token this one renews from; empty for a session that holds its own.</summary>
+    public const string RefreshVia = "via";
 }

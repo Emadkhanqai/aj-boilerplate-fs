@@ -16,6 +16,7 @@ public sealed partial class SignInService
     private readonly IEntraClient _entra;
     private readonly IKeycloakExchanger _keycloak;
     private readonly AuthOptions _auth;
+    private readonly PortalRegistry _portals;
     private readonly TimeProvider _time;
     private readonly ILogger<SignInService> _logger;
 
@@ -26,9 +27,11 @@ public sealed partial class SignInService
         IKeycloakExchanger keycloak,
         IOptions<AuthOptions> options,
         TimeProvider time,
-        ILogger<SignInService> logger)
+        ILogger<SignInService> logger,
+        PortalRegistry? portals = null)
     {
         ArgumentNullException.ThrowIfNull(options);
+        _portals = portals ?? new PortalRegistry(options);
         _sessions = sessions;
         _logins = logins;
         _entra = entra;
@@ -38,43 +41,63 @@ public sealed partial class SignInService
         _logger = logger;
     }
 
-    /// <summary>The redirect URI registered with the identity provider. Built from configuration, never from a request header.</summary>
-    public Uri RedirectUri => new($"{_auth.PublicOrigin}{CallbackPath}");
-
-    public async Task<LoginStart> BeginAsync(
-        string? returnPath, SignInPrompt prompt, CancellationToken cancellationToken, string? loginHint = null)
+    /// <summary>
+    /// The redirect URI registered with the identity provider for a portal. Built from that portal's configured origin, never from a
+    /// request header.
+    /// </summary>
+    public static Uri RedirectUriFor(PortalOptions portal)
     {
+        ArgumentNullException.ThrowIfNull(portal);
+        return new Uri($"{portal.Origin}{CallbackPath}");
+    }
+
+    /// <summary>The portal a request's host belongs to (portal #0 in a single-portal installation); <c>null</c> for an unknown host.</summary>
+    public PortalOptions? Resolve(string? host) => _portals.Resolve(host);
+
+    /// <param name="returnPath">Where to land after sign-in; sanitised by <see cref="RedirectTarget"/>.</param>
+    /// <param name="prompt">What to ask the identity provider for.</param>
+    /// <param name="cancellationToken">Cancels the login-state write.</param>
+    /// <param name="loginHint">Optional e-mail typed on the app's own sign-in page. Personal data: never logged.</param>
+    /// <param name="host">Browser-facing host; consulted only when several portals are configured. An unknown host throws:
+    /// callers check <see cref="Resolve"/> first.</param>
+    public async Task<LoginStart> BeginAsync(
+        string? returnPath, SignInPrompt prompt, CancellationToken cancellationToken, string? loginHint = null, string? host = null)
+    {
+        var portal = _portals.Resolve(host) ?? throw new InvalidOperationException("The host is not a configured portal; check Resolve first.");
         var state = SessionIds.NewRandom();
         var verifier = SessionIds.NewRandom();
         var binding = SessionIds.NewRandom();
 
         await _logins.SaveAsync(
             state,
-            new LoginState(verifier, RedirectTarget.OrDefault(returnPath), SessionIds.StorageKey(binding)),
+            new LoginState(verifier, RedirectTarget.OrDefault(returnPath), SessionIds.StorageKey(binding), portal.Host),
             _auth.Session.LoginStateLifetime,
             cancellationToken);
 
-        var url = _entra.BuildAuthorizeUrl(RedirectUri, state, SessionIds.CodeChallenge(verifier), prompt, LoginHints.Normalize(loginHint));
+        var url = _entra.BuildAuthorizeUrl(RedirectUriFor(portal), state, SessionIds.CodeChallenge(verifier), prompt, LoginHints.Normalize(loginHint));
         return new LoginStart(url, binding);
     }
 
     public async Task<LoginCompletion> CompleteAsync(
-        string? state, string? code, string? bindingValue, CancellationToken cancellationToken)
+        string? state, string? code, string? bindingValue, CancellationToken cancellationToken, string? host = null)
     {
-        if (!SessionIds.IsWellFormed(state) || string.IsNullOrEmpty(code) || !SessionIds.IsWellFormed(bindingValue))
+        var portal = _portals.Resolve(host);
+        if (portal is null || !SessionIds.IsWellFormed(state) || string.IsNullOrEmpty(code) || !SessionIds.IsWellFormed(bindingValue))
         {
             return LoginCompletion.Invalid;
         }
 
         // Single use: taken (read + deleted) before anything else, so a replayed callback finds nothing.
         var login = await _logins.TakeAsync(state!, cancellationToken);
-        if (login is null || !SessionIds.HashesEqual(login.BindingHash, SessionIds.StorageKey(bindingValue!)))
+        if (login is null
+            || (login.Host is not null && !string.Equals(login.Host, portal.Host, StringComparison.OrdinalIgnoreCase))
+            || !SessionIds.HashesEqual(login.BindingHash, SessionIds.StorageKey(bindingValue!)))
         {
             LogInvalidCallback(_logger);
             return LoginCompletion.Invalid;
         }
 
-        var tokens = await _entra.RedeemCodeAsync(code, login.CodeVerifier, RedirectUri, cancellationToken);
+        var tokens = await _entra.RedeemCodeAsync(code, login.CodeVerifier, RedirectUriFor(portal), cancellationToken);
         switch (tokens.Outcome)
         {
             case EntraOutcome.InvalidGrant:
@@ -83,7 +106,6 @@ public sealed partial class SignInService
                 return LoginCompletion.Unavailable;
         }
 
-        var portal = _auth.Portal;
         var exchange = await _keycloak.ExchangeAsync(tokens.AccessToken!, portal, cancellationToken);
         switch (exchange.Outcome)
         {
@@ -141,11 +163,13 @@ public sealed partial class SignInService
         var session = await _sessions.GetAsync(key, cancellationToken);
         if (session is not null)
         {
-            await _sessions.EndAsync(key, session.Subject, cancellationToken);
+            // An END, not a delete: the event is queued in the same transaction as the delete and sent later by the
+            // dispatcher, so the logout never waits on, or fails because of, a portal.
+            await _sessions.EndAsync(key, session.Subject, SessionEnd.LoggedOut(_time.GetUtcNow()), cancellationToken);
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Rejected a sign-in callback: unknown, expired or replayed state, or browser-binding mismatch.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Rejected a sign-in callback: unknown, expired or replayed state, host mismatch or browser-binding mismatch.")]
     private static partial void LogInvalidCallback(ILogger logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Sign-in refused: Keycloak denied the token exchange for client {ClientId}.")]
