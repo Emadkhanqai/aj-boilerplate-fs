@@ -4,6 +4,308 @@
  */
 
 export interface paths {
+    "/api/integration/auth-backend/session-ended": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record how one session ended. Idempotent on the session: the first event for it wins, every
+         *                 other is answered `duplicate`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["AuthBackendSessionEndedRequest"];
+                    "text/json": components["schemas"]["AuthBackendSessionEndedRequest"];
+                    "application/*+json": components["schemas"]["AuthBackendSessionEndedRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AuthBackendSessionEndedResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/authentication-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Sessions, newest sign-in first, 20 per page. `userId` filters to one person; `from` (inclusive)
+         *     and `to` (exclusive) bound the sign-in time. `sortBy` is one of `signedIn`, `user`,
+         *     `sessionEnded`, `duration`, `result`, `endReason` and sorts across ALL pages;
+         *     `sortDir` is `asc` or `desc` (sortBy alone: ascending). An open session has no ending or
+         *     duration: SQL Server orders that NULL first ascending, last descending. Any unknown value is a 400.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description A subject from `GET …/users`. */
+                    userId?: string;
+                    /** @description Earliest sign-in, inclusive. */
+                    from?: string;
+                    /** @description Latest sign-in, exclusive. */
+                    to?: string;
+                    /** @description The column to sort on. */
+                    sortBy?: string;
+                    /** @description `asc` or `desc`. */
+                    sortDir?: string;
+                    /** @description 1-based page number. */
+                    page?: number;
+                    /** @description Rows per page, 1–100. */
+                    pageSize?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["AuthenticationSessionResponsePagedResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/authentication-history/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The people the history names, once each and A–Z, for the User filter. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["AuthenticationHistoryUserResponse"][];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Forbidden */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/features/unack": {
         parameters: {
             query?: never;
@@ -527,6 +829,924 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/me/portals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The portals the caller may open, in the order they are configured. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["MePortalsResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Unauthorized */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search the directory by name or e-mail. A blank `q` answers an empty list without asking
+         *                 upstream. `limit` 1–100, default 25.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description The search term. It is personal data: sent to the Auth service as a query string, never logged. */
+                    q?: string;
+                    /** @description Most people to return. */
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["DirectoryUsersResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Give a person a seat, creating their account when the directory has none. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["CreateDirectoryUserRequest"];
+                    "text/json": components["schemas"]["CreateDirectoryUserRequest"];
+                    "application/*+json": components["schemas"]["CreateDirectoryUserRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["CreatedDirectoryUserResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Unprocessable Content */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Everyone who holds a seat in a portal the Auth service manages, with those seats. A portal whose
+         *                 `outcome` is not `Success` is missing from `members`; that is not "nobody holds a seat".
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["DirectoryMembersResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The seat groups the Auth service manages — the values `PUT …/groups` accepts. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["DirectoryGroupsResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{subject}/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The groups one person holds. */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subject: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["UserGroupsResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        /**
+         * Replace the groups one person holds. Send the full set; an empty array removes every seat. The
+         *                 response says what was added and removed. A failure can still have changed something (the Auth service
+         *                 adds before it removes and rolls nothing back): re-read the groups after any failure.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subject: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["SetUserGroupsRequest"];
+                    "text/json": components["schemas"]["SetUserGroupsRequest"];
+                    "application/*+json": components["schemas"]["SetUserGroupsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success?: boolean;
+                            data?: components["schemas"]["UserGroupsResponse"];
+                            message?: string | null;
+                            errors?: string[] | null;
+                            statusCode?: number;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{subject}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable the account and end its sessions. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subject: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{subject}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable the account. */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subject: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/users/{subject}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Flag every live session of the person for a re-exchange, so a changed seat applies without
+         *                 waiting for the next token renewal.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    subject: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Bad Gateway */
+                502: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+                /** @description Service Unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @default false */
+                            success: boolean;
+                            message?: string | null;
+                            errors?: string[] | null;
+                            code?: string | null;
+                            /** Format: date-time */
+                            timestamp?: string;
+                            traceId?: string | null;
+                        };
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -540,6 +1760,99 @@ export interface components {
              */
             featureIds?: string[] | null;
         };
+        /**
+         * @description The Auth service's session-ended event (`docs/auth/session-ended-contract.md`). Every property is
+         *     nullable on purpose: a missing field must reach the receiver's own rules, which decide what is a 400,
+         *     instead of being refused by model binding — a 400 makes the sender abandon the event for good.
+         */
+        AuthBackendSessionEndedRequest: {
+            /** Format: int32 */
+            schemaVersion?: number | null;
+            eventType?: string | null;
+            eventId?: string | null;
+            sessionId?: string | null;
+            reason?: string | null;
+            reasonDetail?: string | null;
+            occurredAtUtc?: string | null;
+            sessionStartedAtUtc?: string | null;
+            identityProvider?: string | null;
+            portalClientId?: string | null;
+            correlationId?: string | null;
+        };
+        /**
+         * @description The receiver's answer, sent BARE — not in the `ApiResponse` envelope — because the sender
+         *                 reads `outcome` at the top level of the body. `outcome` is `recorded`, `duplicate` or
+         *                 `ignored-unknown-session`.
+         */
+        AuthBackendSessionEndedResponse: {
+            outcome?: string | null;
+        };
+        /** @description A person the history names, for the User filter. */
+        AuthenticationHistoryUserResponse: {
+            /** @description The identity provider's subject; the value to send as `userId`. */
+            userId?: string | null;
+            /** @description A name recorded for them; null when none ever was. */
+            userDisplayName?: string | null;
+        };
+        /**
+         * @description One sign-in session in Administration → Sign-in history. One row per session: its ending, when
+         *                 there is one, is on the same row.
+         */
+        AuthenticationSessionResponse: {
+            /**
+             * Format: uuid
+             * @description The row's id. Not the gateway session id, which is never sent.
+             */
+            id?: string;
+            /** @description The identity provider's subject. */
+            userId?: string | null;
+            /** @description The name on the token when they signed in; null when it had none. */
+            userDisplayName?: string | null;
+            /**
+             * Format: date-time
+             * @description When the gateway says the session began.
+             */
+            signedInAtUtc?: string;
+            /**
+             * Format: date-time
+             * @description When the session ended; null while it is open.
+             */
+            endedAtUtc?: string | null;
+            /** @description `logged-out`, `session-expired` or `signed-out-by-system`; null while open. */
+            endReason?: string | null;
+            /** @description Which check decided the ending (`idle_timeout`, …), for investigation; null when unknown. */
+            endReasonDetail?: string | null;
+            /** @description `Failure` when the system signed the person out, otherwise `Success`. */
+            result?: string | null;
+            /**
+             * Format: int64
+             * @description Sign-in to ending, whole seconds; null while open.
+             */
+            durationSeconds?: number | null;
+        };
+        /**
+         * @description A single page of results. Total is the full count across all pages so a
+         *     client can render paging controls; Items is only the current page.
+         */
+        AuthenticationSessionResponsePagedResponse: {
+            items?: components["schemas"]["AuthenticationSessionResponse"][] | null;
+            /** Format: int32 */
+            total?: number;
+            /** Format: int32 */
+            page?: number;
+            /** Format: int32 */
+            pageSize?: number;
+        };
+        /**
+         * @description `POST /api/v1/admin/users`: give a person a seat, creating the account when the directory
+         *                 has none. `Email` and `GroupPath` are required.
+         */
+        CreateDirectoryUserRequest: {
+            email?: string | null;
+            firstName?: string | null;
+            lastName?: string | null;
+            groupPath?: string | null;
+        };
         /** @description Create-item request body. */
         CreateItemRequest: {
             /** @description Required, 1–200 characters. */
@@ -548,6 +1861,41 @@ export interface components {
             description?: string | null;
             /** @description Optional; defaults to `Draft` when omitted. */
             status?: string | null;
+        };
+        CreatedDirectoryUserResponse: {
+            user?: components["schemas"]["DirectoryUserResponse"];
+            groups?: string[] | null;
+        };
+        /** @description A seat group the Auth service manages. `Path` is what `PUT …/groups` takes. */
+        DirectoryGroupResponse: {
+            path?: string | null;
+            name?: string | null;
+            parentPath?: string | null;
+        };
+        DirectoryGroupsResponse: {
+            groups?: components["schemas"]["DirectoryGroupResponse"][] | null;
+            portals?: components["schemas"]["PortalAccessResponse"][] | null;
+        };
+        DirectoryMemberResponse: {
+            user?: components["schemas"]["DirectoryUserResponse"];
+            groups?: string[] | null;
+        };
+        DirectoryMembersResponse: {
+            members?: components["schemas"]["DirectoryMemberResponse"][] | null;
+            portals?: components["schemas"]["PortalAccessResponse"][] | null;
+        };
+        /** @description A person in the identity directory, as the Auth service reports them. */
+        DirectoryUserResponse: {
+            subject?: string | null;
+            username?: string | null;
+            email?: string | null;
+            firstName?: string | null;
+            lastName?: string | null;
+            enabled?: boolean;
+        };
+        /** @description Result of `GET /api/v1/admin/users?q=`. A blank `q` answers an empty list. */
+        DirectoryUsersResponse: {
+            users?: components["schemas"]["DirectoryUserResponse"][] | null;
         };
         /**
          * @description A "what's new" announcement the current user has not dismissed yet. The only shape that crosses
@@ -627,6 +1975,37 @@ export interface components {
             /** Format: int32 */
             pageSize?: number;
         };
+        /**
+         * @description The portals the signed-in person may open — `GET /api/v1/me/portals`. Derived from the caller's own
+         *     capabilities and the configured portal list; the request carries nothing, so there is nothing to forge.
+         */
+        MePortalsResponse: {
+            /**
+             * @description The key of every portal listed in Portals, for a client that
+             *                 only needs to know locked from unlocked. Same field name USP-Core's response uses.
+             */
+            portalKeys?: string[] | null;
+            /** @description The portals this caller may open. */
+            portals?: components["schemas"]["PortalResponse"][] | null;
+        };
+        /**
+         * @description Coverage of one managed portal in a directory read: `Outcome` is the name of an
+         *                 `Success`, `Unavailable`, `Denied`, … outcome. Anything other than `Success` means that
+         *                 portal's rows are missing from the answer — not that nobody holds a seat there.
+         */
+        PortalAccessResponse: {
+            path?: string | null;
+            outcome?: string | null;
+        };
+        /** @description One portal the caller may open. */
+        PortalResponse: {
+            /** @description Stable identifier. */
+            key?: string | null;
+            /** @description Display name. */
+            name?: string | null;
+            /** @description Where it lives; may be a relative path. */
+            url?: string | null;
+        };
         ProblemDetails: {
             type?: string | null;
             title?: string | null;
@@ -636,6 +2015,13 @@ export interface components {
             instance?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * @description `PUT /api/v1/admin/users/{subject}/groups`. The full set the person should hold; an empty
+         *                 array removes every seat.
+         */
+        SetUserGroupsRequest: {
+            groups?: string[] | null;
         };
         /** @description Update-item request body. */
         UpdateItemRequest: {
@@ -667,6 +2053,13 @@ export interface components {
             canDelete?: boolean;
             /** @description May reach administrative surfaces (operational dashboards, config). */
             canAdminister?: boolean;
+        };
+        /** @description The groups a person holds, and what a write changed. */
+        UserGroupsResponse: {
+            groups?: string[] | null;
+            added?: string[] | null;
+            removed?: string[] | null;
+            portals?: components["schemas"]["PortalAccessResponse"][] | null;
         };
         /**
          * @description What the CURRENT caller is and what the server will let them do — the response of
