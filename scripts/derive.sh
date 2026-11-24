@@ -45,6 +45,15 @@
 #   * Markdown links are re-pointed per repository by scripts/derive-links.py: where the target
 #     lands in the derived repository, else on GitHub in aj-boilerplate-fs (the other stack).
 #   * scripts/derive.sh and scripts/derive-links.py do not ship: they only run in the full-stack tree.
+#   * The other stack's agents, standards, templates and commands under .claude/, and for fe the
+#     backend deploy workflows and infra/, are dropped (BE_DROP / FE_DROP). They are guidance and
+#     tooling for work the derived repository cannot do.
+#   * STILL HAND-MAINTAINED PER DERIVED REPOSITORY, because they are shaped by the repository and
+#     not derivable from this tree: .github/ (workflows, dependabot, CODEOWNERS, templates),
+#     .gitignore, .gitattributes, .editorconfig, .dockerignore, .prettierignore, .mcp.json,
+#     .vscode/, sonar-project.properties, LICENSE, DESIGN.md, CONTRIBUTING.md, SECURITY.md,
+#     CHANGELOG.md (each stack keeps its own history), and README.md / CLAUDE.md. The 1.0.0
+#     derivation decided each of them file by file; CHANGELOG.md [1.0.0] says how.
 #
 # WHAT IT DOES NOT DO: it does not create git repositories, does not commit, and does not
 # push. It produces two directories. What happens to them is a human decision.
@@ -72,9 +81,19 @@ scripts/derive.sh
 scripts/derive-links.py
 '
 
+# The other stack's slice of the harness is dropped too. It is guidance written for work that cannot
+# happen in the derived repository (a backend agent in a repository with no backend), and the files
+# that mention it (.claude/README.md, master-agent.md) have their links re-pointed at
+# aj-boilerplate-fs by scripts/derive-links.py instead of dangling. Amended 2026-11-24, ADR-0011.
 BE_DROP='
 src/frontend/
 .github/workflows/frontend-ci.yml
+.claude/agents/frontend-agent.md
+.claude/agents/frontend-engineer.md
+.claude/commands/sync.md
+.claude/standards/angular.md
+.claude/standards/typescript.md
+.claude/templates/angular-component.md
 '
 
 # `sonar-project.properties` is dropped for fe and NOT for be, which looks asymmetric until you
@@ -83,11 +102,36 @@ src/frontend/
 # both would claim the same path — and the promoted one has to win, because it is what the CLI
 # scanner actually reads from projectBaseDir. Dropping the root copy here is what resolves that
 # collision. The be repository has no such clash: SonarScanner for .NET reads the XML instead.
+#
+# `infra/` and the deploy workflows are dropped for fe because everything in them provisions or rolls
+# out the API; the frontend repository has nothing to deploy from them (its image is built by the
+# consumer's own pipeline). Amended 2026-11-24, ADR-0011.
 FE_DROP='
 src/backend/
 .github/workflows/backend-ci.yml
+.github/workflows/deploy.yml
+.github/workflows/deploy-environment.yml
+infra/
 SonarQube.Analysis.xml
 sonar-project.properties
+.claude/agents/backend-agent.md
+.claude/agents/backend-engineer.md
+.claude/commands/new-migration.md
+.claude/standards/api-design.md
+.claude/standards/clean-architecture.md
+.claude/standards/cloud.md
+.claude/standards/dotnet-security.md
+.claude/standards/dotnet.md
+.claude/standards/ef-core.md
+.claude/standards/efcore-migrations.md
+.claude/standards/middleware.md
+.claude/standards/mssql.md
+.claude/standards/swagger-openapi.md
+.claude/templates/api-controller.md
+.claude/templates/domain-entity.md
+.claude/templates/ef-migration.md
+.claude/workflows/database-change.md
+.claude/workflows/ef-core-migration.md
 '
 
 # Files copied verbatim, WITHOUT the path rewriting described below, because rewriting

@@ -157,6 +157,14 @@ is in [docs/auth/](docs/auth/README.md).
 - Auth service defaults equal the Al Jazeera USP staging Entra values (scopes
   `openid profile offline_access User.Read`, `RequestOwnClientIdScope=false`, `SubjectIssuer=oidc`).
   Azure AD B2C stays available by configuration.
+- **Deriving the single-stack repositories.** `scripts/derive.sh` now emits one `.env.example` per
+  stack from the root file, re-points Markdown links per repository, drops the other stack's `.claude/`
+  agents and standards (and, for the frontend, `infra/` and the backend deploy workflows), and does
+  not ship itself. `generate:api` and the `UserProfile` contract spec find `docs/api/openapi.json`
+  from either layout. The ADR numbers of this repository are the canonical ones in all three. See
+  [ADR-0011](docs/adr/0011-scripted-one-way-derivation-for-the-three-repositories.md).
+- A user holding more than one seat now sees the highest in the top bar, sidebar and home page
+  (it showed whichever the token listed first).
 - A patched `System.Security.Cryptography.Pkcs` is pinned. `Microsoft.Data.SqlClient` 6.1.1 pulls a
   version that now carries two advisories, which fail restore under warnings-as-errors.
 
