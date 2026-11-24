@@ -50,31 +50,42 @@ git clone https://github.com/<your-org>/<this-repo>.git
 cd <this-repo>
 ```
 
-**Prerequisites:** .NET SDK 10, Node.js 22+, a reachable SQL Server and Redis, and access to the
-project's Keycloak realm. Ask your tech lead for the local configuration values — they are not in
-the repository, and they never will be.
+**Prerequisites:** Docker. That is all you need to run everything. To build, test or debug outside
+Docker you also need the **.NET SDK 10** and **Node.js 22**.
 
 ```bash
-export CLOUD_PROVIDER=gcp    # or azure — ask which one this project uses
-
-# The tool manifest and the SDK pin both live in src/backend, so run EF from there.
-(cd src/backend \
-  && dotnet tool restore \
-  && dotnet ef database update \
-       --project        src/AjBoilerplate.Infrastructure \
-       --startup-project src/AjBoilerplate.Api)
-
-dotnet run --project src/backend/src/AjBoilerplate.Api    # → http://localhost:5080
+cp .env.example .env          # then set MSSQL_SA_PASSWORD to any strong local value
+docker compose up --build     # SQL Server, Redis, Keycloak, migrations, Auth service, API, web
 ```
 
-In a second terminal:
+Wait for it to settle (the first run imports the Keycloak realm), then open
+<http://localhost:4200> and sign in as `admin`, `editor` or `viewer` (password in the root
+README). No Microsoft tenant and no secrets from your tech lead are needed: the local stack uses a
+bundled Keycloak with committed, dev-only values. Also try `noaccess`, to see what a user with no
+role gets.
+
+Open **Items** and create, edit and delete a row. Seeing the sample feature work end to end now
+means that when something breaks later you know it was you.
+
+If you are stuck, [docs/auth/troubleshooting.md](auth/troubleshooting.md) covers the usual
+suspects (a stale SQL volume, a port in use, Keycloak not ready).
+
+**Working on one stack without Docker:**
 
 ```bash
-cd src/frontend && npm ci && npx nx serve web             # → http://localhost:4200
+# backend: the tool manifest and the SDK pin live in src/backend, so run EF from there
+(cd src/backend && dotnet tool restore && dotnet ef database update \
+    --project src/AjBoilerplate.Infrastructure --startup-project src/AjBoilerplate.Api)
+dotnet run --project src/backend/src/AjBoilerplate.Api    # http://localhost:5080, 401 without Keycloak settings
+
+# frontend: no backend needed
+cd src/frontend && npm ci && npm run dev:offline          # http://localhost:4200, mocked API, role picker
 ```
 
-Open the app and click through the sample feature. Seeing it work end to end now means that when
-something breaks later you know it is you.
+The sign-in flow itself only runs in the compose stack. Ask your tech lead whether this project
+runs `AUTH_PROVIDER=embedded` (it deploys its own Auth service) or `usp` (inside the Al Jazeera
+USP platform), and which cloud (`CLOUD_PROVIDER`) it targets. Real Entra and Keycloak values are
+never in the repository; they come from the project's secrets provider.
 
 ---
 
@@ -85,9 +96,12 @@ In this order:
 1. **[`CLAUDE.md`](../CLAUDE.md)** at the repository root — the stack, the architecture, the
    layer dependency rule, the commands, and the non-negotiable rules. Read it properly. It is
    short on purpose.
-2. **The nested `CLAUDE.md`** for the stack you will work in — `src/backend/CLAUDE.md` or
-   `src/frontend/CLAUDE.md`. Both if you are full-stack.
-3. **`.claude/standards/`** — skim the index, read in full whichever standards cover what you
+2. **[`src/frontend/CLAUDE.md`](../src/frontend/CLAUDE.md)** if you will touch the frontend. There
+   is no backend `CLAUDE.md`; the backend's conventions are in the root file and
+   [`src/backend/README.md`](../src/backend/README.md).
+3. **[`docs/auth/README.md`](auth/README.md)** — ten minutes, and it explains the part of this
+   system that surprises people most: the browser holds no token.
+4. **`.claude/standards/`** — skim the index, read in full whichever standards cover what you
    are about to touch.
 
 Note the hard rule while you are there: **never put a secret, connection string, token, or

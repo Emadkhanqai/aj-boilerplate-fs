@@ -18,6 +18,15 @@ unchanged on either provider — see [ADR-0002](../../docs/adr/0002-dual-cloud-p
 This is a boilerplate, not a platform. It is deliberately small enough to read in one sitting.
 Extend it; do not treat it as complete.
 
+> **What this tree does not deploy.** It provisions the **API** and what the API depends on. It does
+> not create the web container (nginx gateway), the Auth service (`AjBoilerplate.Auth`), the Auth
+> database, or Keycloak, and `.github/workflows/deploy.yml` rolls out only the API image (the `API_IMAGE` variable).
+> A project running `AUTH_PROVIDER=embedded` has to add those; a project inside the Al Jazeera USP
+> platform (`AUTH_PROVIDER=usp`) needs no Auth service. See
+> [docs/auth/setup.md](../../docs/auth/setup.md#what-is-not-deployed). Secrets the API reads are
+> loaded from the store at boot; the Auth service reads environment variables, so its platform
+> injects them.
+
 ---
 
 ## Layout

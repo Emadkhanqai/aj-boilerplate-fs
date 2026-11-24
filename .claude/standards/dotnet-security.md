@@ -5,11 +5,14 @@ Microsoft-aligned hardening for the backend. Complements
 
 ## Identity: the provider authenticates, Keycloak authorizes
 
-- **Authentication** is delegated to the cloud provider's identity service over **OIDC**
-  (Google Cloud Identity under `CLOUD_PROVIDER=gcp`, Microsoft Entra ID under `azure`).
-  Validate the JWT with `JwtBearer` against the configured authority and audience. The
-  application holds **no local credentials**.
-- **Authorization** is **Keycloak**, in both providers. It is the source of truth for roles,
+- **Authentication** is Microsoft Entra ID, run by the separate Auth service
+  (`AjBoilerplate.Auth`) and a gateway in front of the API; it is the same on both clouds. The API
+  never signs anyone in: it validates the **Keycloak JWT** the gateway forwards, with `JwtBearer`
+  (issuer, signature, expiry, `ClockSkew = 0`), signing keys from `Keycloak:JwksUri` (https outside
+  Development, unless `Keycloak:AllowInsecureJwksTransport` is set on purpose), and an **`azp`
+  check** against `Keycloak:ClientId` in place of audience validation. The application holds **no
+  local credentials**. See [`docs/auth/`](../../docs/auth/README.md).
+- **Authorization** is **Keycloak**, in every deployment. It is the source of truth for roles,
   scopes, and permissions, and it mints the scoped, time-bound, revocable tokens behind any
   external surface. This split is deliberate: swapping cloud provider must not change the
   authorization model.

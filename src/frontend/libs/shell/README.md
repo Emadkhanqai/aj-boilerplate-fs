@@ -13,4 +13,10 @@ The authenticated application chrome: sidebar, top bar, and the routed content a
   [`docs/whats-new.md`](../../../../docs/whats-new.md).
 - `sidebar.ts` / `top-bar.ts` — presentation only.
 
-Public routes (login, auth callback, signing out, 404) deliberately render OUTSIDE this shell.
+- `role-change/` — the blocking dialogs and the two watchers wired in `app.config.ts`:
+  `RoleChangeWatcher` polls `/auth/roles-version` every 15 s while the tab is visible (and after any
+  403) and, on a change, re-reads `/api/v1/me`: fewer capabilities blocks with a reload dialog,
+  more shows a toast. `AccessRevokedWatcher` opens the dialog whose only action is to sign out.
+
+Public routes (login, signing out, access denied, 404) deliberately render OUTSIDE this shell. There
+is no `/auth/callback` route: the Auth service owns that path and nginx proxies `/auth/` to it.

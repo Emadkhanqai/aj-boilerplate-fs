@@ -14,7 +14,7 @@ truth for frontend type generation**.
   `PagedResponse<T>` (see [`api-response-format.md`](api-response-format.md)).
 - **Document error responses** (400 / 401 / 403 / 404 / 409 / 410 / 429 / 500 / 503) with
   their `code` values.
-- **Document auth requirements** — register the OIDC/bearer security scheme and mark protected
+- **Document auth requirements** — register the bearer (Keycloak JWT) security scheme and mark protected
   endpoints. Any separate scoped-token scheme is documented as its own security scheme.
 - **Document API versions** as separate OpenAPI groups (`v1`, `v2`) — see
   [`api-versioning.md`](api-versioning.md).
