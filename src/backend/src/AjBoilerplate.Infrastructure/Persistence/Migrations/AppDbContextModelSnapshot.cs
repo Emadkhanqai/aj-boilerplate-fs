@@ -27,6 +27,26 @@ namespace AjBoilerplate.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid?>("EndEventId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("EndReason")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("EndReasonDetail")
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("datetimeoffset(7)");
+
                     b.Property<DateTimeOffset>("RecordedAt")
                         .HasColumnType("datetimeoffset(7)");
 
@@ -49,6 +69,9 @@ namespace AjBoilerplate.Infrastructure.Persistence.Migrations
                     b.HasIndex("SessionId")
                         .IsUnique()
                         .HasDatabaseName("IX_AuthenticationEvents_SessionId");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("IX_AuthenticationEvents_StartedAt");
 
                     b.HasIndex("Subject")
                         .HasDatabaseName("IX_AuthenticationEvents_Subject");

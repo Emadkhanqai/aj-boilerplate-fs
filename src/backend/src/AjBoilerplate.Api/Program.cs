@@ -178,6 +178,10 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseCors(Cors.FrontendPolicy);
 
+// The Auth service's session-ended door does not exist (404) until a key or a Google caller is configured.
+// BEFORE authentication, so an unconfigured door never answers 401.
+app.UseMiddleware<AuthBackendIntegrationEnabledMiddleware>();
+
 // Rate limiting AFTER authentication, deliberately. The limiter partitions by user, and before
 // UseAuthentication `context.User` is always anonymous: every caller fell into the client-IP bucket,
 // which behind the gateway is the proxy's address, so ALL users shared one bucket. The cost accepted

@@ -19,6 +19,8 @@ public sealed class EnvelopeResponseSchemaFilter : IOperationFilter
             return;
         }
 
+        var bare = context.ApiDescription.ActionDescriptor.EndpointMetadata?.OfType<BareSuccessResponseAttribute>().Any() == true;
+
         foreach (var (statusCode, response) in operation.Responses)
         {
             // 204 is the one success status with no body at all — EnvelopeResultFilter passes it
@@ -29,6 +31,11 @@ public sealed class EnvelopeResponseSchemaFilter : IOperationFilter
             }
 
             var isSuccess = statusCode.StartsWith('2');
+            if (isSuccess && bare)
+            {
+                continue;
+            }
+
             var content = response.Content;
 
             if (content is null)

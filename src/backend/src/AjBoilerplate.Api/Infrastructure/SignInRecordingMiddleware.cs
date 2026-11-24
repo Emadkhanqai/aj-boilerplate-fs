@@ -49,7 +49,10 @@ public sealed class SignInRecordingMiddleware
         HttpContext context, IMemoryCache cache, ISignInRecorder recorder, ILogger logger)
     {
         var request = context.Request;
+        // A machine caller (the Auth service's session-ended events) is not a person signing in: it
+        // carries no session headers and its principal is a fixed service identity.
         if (!request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
+            || request.Path.StartsWithSegments("/api/integration", StringComparison.OrdinalIgnoreCase)
             || context.User.Identity?.IsAuthenticated != true)
         {
             return;
@@ -80,7 +83,8 @@ public sealed class SignInRecordingMiddleware
 
         try
         {
-            var recorded = await recorder.RecordAsync(subject, sessionId, startedAt, context.RequestAborted);
+            var displayName = context.User.FindFirst("name")?.Value ?? context.User.FindFirst("preferred_username")?.Value;
+            var recorded = await recorder.RecordAsync(subject, displayName, sessionId, startedAt, context.RequestAborted);
             cache.Set(cacheKey, true, Remember);
             if (recorded)
             {
