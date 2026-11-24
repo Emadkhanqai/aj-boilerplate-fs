@@ -65,7 +65,8 @@ The first run builds images and imports the Keycloak realm, so allow a few minut
 
 You land on the home page. As `admin`, open **Users & roles** to see who holds which seat, add a person
 (an `example.com` address; the local stack allows only that domain), move someone between seats, or
-disable them; the person's open session is told at once. **Sign-in history** lists every session and,
+disable them. Disabling ends their session immediately; a seat change reaches an open session within the 15 s
+roles-version poll. **Sign-in history** lists every session and,
 once a session has ended, how (logged out, expired, or signed out by the system). The top bar's portal
 switcher lists the two sample portals from the `Portals__*` settings in `docker-compose.yml`. Open
 **Items** and create, edit and (as `admin`) delete a row. That
