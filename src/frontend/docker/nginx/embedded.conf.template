@@ -128,6 +128,22 @@ server {
         return 404;
     }
 
+    # The hand-off page is a document the Auth service builds with its OWN Content-Security-Policy (an allow-listed hash for its one
+    # inline auto-submit script, and no `form-action`, so the cross-origin POST to the target portal's redeem URL is permitted).
+    # The gateway CSP (`script-src 'self'`, `form-action 'self'`) would block both, and two CSP headers are enforced TOGETHER, so
+    # here the upstream's is the ONLY one: every other security header is still added, the CSP is not.
+    location = /auth/handoff {
+        limit_req zone=auth_signin burst=30 nodelay;
+        include /etc/nginx/snippets/security-headers-no-csp.conf;
+        proxy_hide_header X-Auth-Jwt;
+        include /etc/nginx/conf.d/upstream/auth.conf;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Request-Id $request_id;
+    }
+
     location /auth/ {
         limit_req zone=auth_signin burst=30 nodelay;
         limit_req zone=auth_roles_version burst=300 nodelay;
