@@ -3,11 +3,13 @@
 The API contract, as TypeScript. **Generated — never hand-edited.**
 
 ```sh
-npm run generate:api   # openapi-typescript ../../docs/api/openapi.json -o src/lib/generated.ts
+npm run generate:api   # scripts/generate-api.mjs -> openapi-typescript <snapshot> -o src/lib/generated.ts
 ```
 
 The script reads the committed `docs/api/openapi.json` (regenerated from the compiled API by
-`scripts/generate-openapi.sh`), so it needs no running server. Run it after every backend contract
+`scripts/generate-openapi.sh`), so it needs no running server. `scripts/generate-api.mjs` finds the
+snapshot whether this package is `src/frontend` of the full-stack repository or the root of the
+frontend one. Run it after every backend contract
 change, and commit the result — a diff here is the review signal that an API contract moved.
 
 `generated.ts` is the generated file. `types.ts` beside it is **hand-written on purpose**: the
