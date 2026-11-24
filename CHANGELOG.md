@@ -163,6 +163,8 @@ is in [docs/auth/](docs/auth/README.md).
   not ship itself. `generate:api` and the `UserProfile` contract spec find `docs/api/openapi.json`
   from either layout. The ADR numbers of this repository are the canonical ones in all three. See
   [ADR-0011](docs/adr/0011-scripted-one-way-derivation-for-the-three-repositories.md).
+- **Backend CI runs `AjBoilerplate.Auth.Tests`.** The Auth service's tests are their own project and
+  no workflow step ran them. If you copied `backend-ci.yml`, add the step.
 - A user holding more than one seat now sees the highest in the top bar, sidebar and home page
   (it showed whichever the token listed first).
 - A patched `System.Security.Cryptography.Pkcs` is pinned. `Microsoft.Data.SqlClient` 6.1.1 pulls a

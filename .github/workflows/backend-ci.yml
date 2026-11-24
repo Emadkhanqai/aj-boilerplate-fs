@@ -198,6 +198,15 @@ jobs:
             --logger "trx;LogFileName=architecture-tests.trx" \
             --results-directory ./TestResults
 
+      # The Auth service's tests are a project of their own (fakes; no Docker), not part of the unit or
+      # architecture projects above, so they need a step of their own.
+      - name: dotnet test AjBoilerplate.Auth.Tests
+        run: |
+          dotnet test src/backend/tests/AjBoilerplate.Auth.Tests \
+            --no-restore \
+            --logger "trx;LogFileName=auth-tests.trx" \
+            --results-directory ./TestResults
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
