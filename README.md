@@ -52,18 +52,23 @@ docker compose up --build
 The first run builds images and imports the Keycloak realm, so allow a few minutes. Then open
 **<http://localhost:4200>**.
 
-**Sign in** with one of the seeded local users. All four share the committed, dev-only password
+**Sign in** with one of the seeded local users. All five share the committed, dev-only password
 `dev-only-password-never-reuse` (`LOCAL_USER_PASSWORD` in `docker-compose.yml`; override it in
 `.env`). These accounts exist only inside your local Keycloak container:
 
 | Username | Can do | What you should see |
 |---|---|---|
-| `admin` | everything | The app, with **Items**, **New Item**, edit and delete |
-| `editor` | create and edit | The app, no delete |
+| `admin` | everything | The app, with **Items**, **New Item**, edit and delete, and under **Administration** **Users & roles** and **Sign-in history** |
+| `editor` | create and edit | The app, no delete, no Administration (`editor2` is a second editor) |
 | `viewer` | read | The app, read-only; no **New Item** |
 | `noaccess` | nothing | Keycloak accepts the login, then a **403 "No access"** page |
 
-You land on the home page. Open **Items** and create, edit and (as `admin`) delete a row. That
+You land on the home page. As `admin`, open **Users & roles** to see who holds which seat, add a person
+(an `example.com` address; the local stack allows only that domain), move someone between seats, or
+disable them; the person's open session is told at once. **Sign-in history** lists every session and,
+once a session has ended, how (logged out, expired, or signed out by the system). The top bar's portal
+switcher lists the two sample portals from the `Portals__*` settings in `docker-compose.yml`. Open
+**Items** and create, edit and (as `admin`) delete a row. That
 round trip exercises the sign-in, the gateway, the generated types, the controller, the handler,
 the repository and the migration. Seeing it work now means that when something breaks later, you
 know it was you.
@@ -154,6 +159,16 @@ Go deeper: [docs/auth/](docs/auth/README.md) · [setup](docs/auth/setup.md) ·
   library boundaries enforced by Nx tags.
 - **Gateway session authentication** with seats (`admin`, `editor`, `viewer`) and permissions
   (`items:read`, ...), a role-change watcher, and an access-revoked dialog.
+- **User administration**: a **Users & roles** page (members, search, add, change seats, disable and
+  enable) over the Auth service's `/internal/admin/*` and Keycloak's Admin REST API, restricted to the
+  groups under a managed path and to an allow-list of e-mail domains for new accounts.
+- **Sign-in history**: every session, with how it ended, reported by the Auth service to the API
+  through a transactional outbox ([session-ended contract](docs/auth/session-ended-contract.md)).
+- **A portal switcher** fed by `GET /api/v1/me/portals`, and the Auth service's cross-portal
+  [hand-off](docs/auth/handoff.md), `/auth/no-access` page and Pub/Sub `/auth/events` push (all
+  off, or inert, until configured).
+- **One pagination standard** (count left, pages middle, Rows right; 20 by default; 10/20/50/100;
+  remembered per table) on every paged list.
 - **A "What's new" feature spotlight**: shows each user a new feature once, acknowledged
   server-side. See [docs/whats-new.md](docs/whats-new.md).
 - **Two clouds, one switch**: `CLOUD_PROVIDER=gcp|azure` selects the secrets provider and which

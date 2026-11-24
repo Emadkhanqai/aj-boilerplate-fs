@@ -118,8 +118,9 @@ is in [docs/auth/](docs/auth/README.md).
   `infra/` tree. [ADR-0002](docs/adr/0002-dual-cloud-provider-behind-one-switch.md)'s identity half
   is superseded by ADR-0012 (a note sits at its top; its body is unchanged).
 - **New database objects.** The app database gets an `AuthenticationEvents` table (migration
-  `AddAuthenticationEvents`), and the Auth service needs its own database with schema `auth`, applied
-  by its own migration. Neither runs at start-up.
+  `AddAuthenticationEvents`, then `AddSessionEndAndDisplayName`, which adds the nullable end columns), and the
+  Auth service needs its own database with schema `auth`, applied by its own migrations (the last,
+  `AddHandoffAndSessionEndedOutbox`, is additive: a nullable column and the `SessionEndedOutbox` table). None runs at start-up.
 - **Root `docker-compose.yml` has new services** (`keycloak`, `auth-migrate`, `auth`) and the API now
   waits for Keycloak. The old `OIDC_*` and `Authentication__*` entries are gone from `.env.example`.
 - **Generated API types moved.** `npm run generate:api` now reads `docs/api/openapi.json` and writes
@@ -148,7 +149,9 @@ is in [docs/auth/](docs/auth/README.md).
   unavailable" page.
 - **A local sign-in stack with no Microsoft tenant**: the bundled Keycloak realm
   (`infra/keycloak/realm-aj-boilerplate.json`, dev-only secrets) and seeded users `admin`, `editor`,
-  `viewer` and `noaccess`.
+  `viewer`, `editor2` and `noaccess`, whose seats are held through the groups `/app/admins`, `/app/editors`
+  and `/app/viewers`, plus a dedicated `aj-boilerplate-admin` client (a service account) for the Auth service's
+  directory admin.
 - **Google Cloud deployment of the Auth service and the web gateway.** `infra/gcp` now creates the
   `auth` and `web` Cloud Run services, the `auth-migrate` job, the Auth database and its secrets, and
   points the API at an external Keycloak. `deploy.yml` builds the two images and rolls out the
@@ -157,6 +160,23 @@ is in [docs/auth/](docs/auth/README.md).
   Google ID token to the API and Auth service so they need no public invoker. The supply-chain scan now
   covers the Auth image. **Azure is unchanged: the Bicep deploys the API only.** Keycloak is not
   deployed anywhere. **No apply has been run**; see [`infra/gcp/README.md`](infra/gcp/README.md#what-is-and-is-not-verified).
+- **User administration and sign-in history.** The Auth service gains USP's remaining surfaces at the same
+  paths: `/internal/admin/*` (users, groups, members, per-user seats, disable and enable, refresh, over a
+  Keycloak Admin REST client restricted to `Auth:Admin:ManagedGroupPaths`, with a deny-by-default e-mail
+  domain allow-list for new accounts), `/auth/no-access`, `POST /auth/events` (Pub/Sub, off until
+  configured), `/auth/handoff` and `/auth/handoff/redeem` (cross-portal sign-in, needs `Auth:Portals`) and a
+  transactional outbox that reports every session's end to the API
+  ([contract](docs/auth/session-ended-contract.md)). The API gains the receiver
+  (`POST /api/integration/auth-backend/session-ended`, `X-Auth-Events-Key`), `GET /api/v1/admin/authentication-history`,
+  `GET /api/v1/me/portals` and a proxy `/api/v1/admin/*` over the Auth service's admin routes. The web app gains
+  **Users & roles**, **Sign-in history** and a portal switcher, and one pagination standard (count left,
+  Rows 20/10/20/50/100 right, remembered per table). New keys: `Auth:Admin:*`, `Auth:Portal:SessionEvents:*`,
+  `Auth:Portal:DisplayName`, `Auth:Portals:N:*`, `Auth:Events:*`, `Auth:SessionEndDelivery:*`,
+  `Auth:ForwardedHostHeader`, `AuthService:*`, `Integration:AuthBackend:*` and `Portals:N:*`; all optional, and each
+  surface is off or 404 until configured, so an existing 1.0.0 candidate that sets none of them behaves as before.
+  The nginx gateway passes the Auth service's own CSP through, alone, for `/auth/handoff`
+  (`src/frontend/docker/check-gateway-config.sh` checks it). The local `docker compose up` wires all of it with DEV-ONLY values.
+  *If you ignore this:* nothing changes for you except two new migrations to apply.
 - **Documentation**: [`docs/auth/`](docs/auth/README.md) (overview, setup, troubleshooting, contract)
   and ADR-0012. The root `README.md` was rewritten around a five-minute quickstart.
 

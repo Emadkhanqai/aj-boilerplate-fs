@@ -47,6 +47,12 @@ imported at start-up. Every secret in it is a committed, dev-only value.
 |---|---|---|
 | `aj-boilerplate-entra-sim` | **Entra ID**: the browser signs in here, and the Auth service redeems the code against it | Auth service, `Auth__Entra__*` |
 | `aj-boilerplate-app` | **The portal's Keycloak client**: the Auth service exchanges the sign-in token for a JWT minted for this client. The API checks `azp` equals it. Its client roles are the seats and permissions. | Auth service `Auth__Portal__*`, API `Keycloak__ClientId` |
+| `aj-boilerplate-admin` | **The directory admin client**: a dedicated client with a service account holding the `realm-management` roles `view-users`, `query-users`, `query-groups` and `manage-users`. The Auth service's `/internal/admin/*` calls Keycloak's Admin REST API as it, which is what the Users & roles page ends up using. Not the app client. It keeps Keycloak's default full scope: with `fullScopeAllowed` off its token carries no `realm-management` roles and every admin call is answered 403. | Auth service `Auth__Admin__Keycloak__*` |
+
+**Seats are held through groups**, the way a deployed realm does it. The realm has the group `/app` and, under it, `/app/admins`,
+`/app/editors` and `/app/viewers`; each carries the app client's seat role of the same name (`admin`, `editor`, `viewer`), and each
+seat role is a composite of its permissions. A user is in a seat by being a member of the group. The Auth service's
+`Auth__Admin__ManagedGroupPaths__0` is `/app`, so the admin surface reads and writes only groups under it.
 
 Because both live in one realm, the token exchange is Keycloak's standard (internal-to-internal)
 one, enabled by `KC_FEATURES=token-exchange-standard` in `docker-compose.yml`. That is why the
@@ -56,22 +62,35 @@ Development environment.
 
 ### Seeded users
 
-All four share one password, `LOCAL_USER_PASSWORD`, which defaults to the committed dev-only
+All five share one password, `LOCAL_USER_PASSWORD`, which defaults to the committed dev-only
 value `dev-only-password-never-reuse` (see `docker-compose.yml`). Override it in `.env` if you
 like. These accounts exist only in the local container.
 
-| Username | Client roles on `aj-boilerplate-app` | What you should see |
+| Username | Member of | What you should see |
 |---|---|---|
-| `admin` | `admin` | Everything, including **New Item** and delete |
-| `editor` | `editor` | Create and edit items; no delete |
-| `viewer` | `viewer` | Read-only |
-| `noaccess` | none | Signs in at Keycloak, then the Auth service shows a **403 "No access"** page. This is the "authenticated but no role" case. |
+| `admin` | `/app/admins` | Everything, including **New Item**, delete, **Users & roles** and **Sign-in history** (under Administration) |
+| `editor` | `/app/editors` | Create and edit items; no delete; no Administration |
+| `editor2` | `/app/editors` | A second editor, so the member list has more than one person to search and re-seat |
+| `viewer` | `/app/viewers` | Read-only |
+| `noaccess` | no group | Signs in at Keycloak, then the Auth service shows a **403 "No access"** page. This is the "authenticated but no role" case. |
+
+### What else the local stack wires up
+
+Everything below is in `docker-compose.yml` with DEV-ONLY values, so the admin screens work with one `docker compose up`:
+
+| Feature | How it is wired locally |
+|---|---|
+| Users & roles | API `AuthService__BaseUrl=http://auth:8080` and `AuthService__AdminApiKey` equal to the Auth service's `Auth__Admin__ApiKey` (`LOCAL_AUTH_ADMIN_API_KEY`). The Auth service reaches Keycloak with the `aj-boilerplate-admin` client (`LOCAL_ADMIN_CLIENT_SECRET`). Creating a person is allowed only for `Auth__Admin__AllowedEmailDomains__0=example.com` (the seeded users are `example.test`, so they cannot be created twice). |
+| Sign-in history shows how a session ended | `Auth__Portal__SessionEvents__Url` points at the API's receiver and `Auth__Portal__SessionEvents__Key` equals the API's `Integration__AuthBackend__EventsKey` (`LOCAL_AUTH_EVENTS_KEY`). See [session-ended-contract.md](session-ended-contract.md). A logout reaches the history within the outbox poll interval (`Auth:SessionEndDelivery:PollInterval`, 5 s). |
+| Portal switcher | API `Portals__0__*` and `Portals__1__*`: two sample entries. The second only demonstrates the menu; it opens the same app. |
+| `/auth/events` (the Pub/Sub push of Keycloak user changes) | **Not wired locally**: it stays off (404) until `Auth__Events__Audience` and `Auth__Events__PushServiceAccount` are set, which needs a Google Pub/Sub push. |
+| `/auth/handoff` between portals | Needs a second portal in `Auth:Portals`; not configured locally, so `/auth/handoff?to=<anything else>` is the designed 404 page. See [handoff.md](handoff.md). |
 
 ### Ports and URLs
 
 | Service | URL | Notes |
 |---|---|---|
-| Web (nginx gateway) | <http://localhost:4200> | the only thing a browser should use |
+| Web (nginx gateway) | <http://localhost:4200> (`WEB_PORT`) | the only thing a browser should use |
 | API | <http://localhost:8080> | published for tooling; **a browser call here has no session**, so protected endpoints answer 401 |
 | Keycloak | <http://localhost:8081> | admin console, user `admin`, password `LOCAL_KEYCLOAK_ADMIN_PASSWORD` (committed dev default) |
 | Auth service | not published | reachable only through the web container's `/auth/*` |
@@ -394,7 +413,20 @@ this at start-up and refuses to start on a bad value.
 | `Auth:Keycloak:TokenEndpointUrl` | empty | no | Override the exchange URL |
 | `Auth:Portal:ClientId` | empty | yes | The portal's Keycloak client |
 | `Auth:Portal:ClientSecret` | empty | yes | **Secret.** |
-| `Auth:Admin:ApiKey` | empty | no | **Secret.** Sent as `X-Admin-Api-Key`. Empty makes `/internal/admin/*` answer 404. |
+| `Auth:ForwardedHostHeader` | `X-Forwarded-Host` | no | The header carrying the browser-facing host. Read **only** when `Auth:Portals` is not empty, to choose the portal; redirect URIs are built from the registered portal's origin, never from it. |
+| `Auth:Portal:DisplayName` | empty | no | The name the "No access" page uses ("You have no access to ..."). Empty reads "this application". |
+| `Auth:Portal:SessionEvents:Url` | empty | no | The API's session-ended receiver, e.g. `https://api.example.com/api/integration/auth-backend/session-ended`. Empty: nothing is queued for this portal. |
+| `Auth:Portal:SessionEvents:Key` | empty | no | **Secret.** Sent as `X-Auth-Events-Key`. When set, no Google ID token is minted. The API's `Integration:AuthBackend:EventsKey` must equal it. |
+| `Auth:Portal:SessionEvents:Audience` | the origin of `Url` | no | The Google ID token audience, used only when no `Key` is set. An origin. |
+| `Auth:Portals:N:*` | none | no | A further portal on this Auth service: `Host` (bare DNS name), `ClientId`, `ClientSecret` (**secret**), optional `LoggedOutPath`, `DisplayName`, `SessionEvents:*`. See [handoff.md](handoff.md). |
+| `Auth:SessionEndDelivery:*` | see below | no | The session-ended outbox sender. `PollInterval` `00:00:05`, `BatchSize` `50`, `ClaimLease` `00:02:00`, `Timeout` `00:00:10`, `InitialRetryDelay` `00:00:15`, `MaxRetryDelay` `00:15:00`, `MaxAge` `2.00:00:00` (abandoned and logged at Error after this), `Retention` `7.00:00:00`. |
+| `Auth:Events:Audience`, `Auth:Events:PushServiceAccount` | empty | no | Both set turns `POST /auth/events` on (Google Pub/Sub push of Keycloak user changes); either empty and it answers 404. |
+| `Auth:Admin:ApiKey` | empty | no | **Secret.** Sent as `X-Admin-Api-Key`. Empty (and no Google caller below) makes the whole of `/internal/admin/*` answer 404. |
+| `Auth:Admin:Audience`, `Auth:Admin:AllowedCallers` | empty | no | Optional alternative caller authentication: a signature-verified Google ID token for this audience from one of the listed service accounts. Both needed. |
+| `Auth:Admin:ManagedGroupPaths` | empty | no | Keycloak group paths the surface may administer, e.g. `/app`. A seat is a group **under** one; any other path is refused and nothing changes. |
+| `Auth:Admin:AllowedEmailDomains` | empty | no | Domains a **new** account may be created for. Empty refuses every creation (deny by default). |
+| `Auth:Admin:Keycloak:ClientId`, `ClientSecret` | empty | no | The admin client (service account with `view-users`, `query-users`, `query-groups`, `manage-users`). **Secret** for the second. Unset: the user, group and member routes answer 501. |
+| `Auth:Admin:Keycloak:BaseUrl`, `Realm`, `Timeout` | the `Auth:Keycloak` ones, `00:00:10` | no | Override where the Admin REST API is. |
 | `Auth:Session:EncryptionKey` | empty | yes | **Secret.** Base64 of exactly 32 bytes |
 | `Auth:Session:IdleTimeout` | `08:00:00` | no | Sliding |
 | `Auth:Session:AbsoluteLifetime` | `12:00:00` | no | From sign-in; activity does not extend it |
@@ -405,7 +437,7 @@ this at start-up and refuses to start on a bad value.
 | `Auth:Session:MinimumServableLifetime` | `00:00:05` | no | A JWT closer to expiry than this is not served during a fault |
 | `Auth:Session:SweepInterval` | `00:30:00` | no | Expired-row clean-up |
 
-### API (`AjBoilerplate.Api`), identity keys
+### API (`AjBoilerplate.Api`), identity, admin and session-ended keys
 
 | Key | Default | Required | What it does |
 |---|---|---|---|
@@ -418,6 +450,13 @@ this at start-up and refuses to start on a bad value.
 | `Keycloak:AllowDiscoveryFallback` | `false` | no | Outside Development, lets the API resolve keys by discovery when `JwksUri` is empty. Without it that combination stops the API. |
 | `Keycloak:AllowInsecureJwksTransport` | `false` | no | **Opt-in.** Lets a non-Development environment fetch the JWKS over plain http. Logs a warning on every start. |
 | `Keycloak:HonourRealmRoles` | `false` | no | Read realm-wide roles as seats. Leave off in a shared realm. |
+| `AuthService:BaseUrl` | empty | for the admin screens | The Auth service's own origin as the API reaches it (not through the gateway, which answers 404 for `/internal/`). Empty (or no key): every `/api/v1/admin/*` identity route answers 503. |
+| `AuthService:AdminApiKey` | empty | for the admin screens | **Secret.** Must equal the Auth service's `Auth:Admin:ApiKey`. |
+| `AuthService:Timeout` | `00:00:15` | no | HTTP timeout to the Auth service (1 s to 1 min; anything else uses 15 s). |
+| `Integration:AuthBackend:EventsKey` | empty | for sign-in history endings | **Secret.** The shared key of `POST /api/integration/auth-backend/session-ended`; must equal the Auth service's `SessionEvents:Key`. With neither this nor `Audience` set the endpoint answers 404. |
+| `Integration:AuthBackend:PortalClientId` | `Keycloak:ClientId` | no | The `portalClientId` an event for this app carries; another value is answered 400. |
+| `Integration:AuthBackend:Audience`, `AllowedCallerEmail` | empty | no | The alternative to the key: a Google ID token for this origin from that service account. Both needed. |
+| `Portals:N:Key`, `Name`, `Url`, `RequiredCapability` | no entries | no | The list behind `GET /api/v1/me/portals` and the top-bar switcher. `RequiredCapability` is `read`, `write` or `administer`; blank means any signed-in person with a seat; an unknown word hides the portal. |
 
 \* With none of `ValidIssuer` and (`JwksUri` or `Authority`) set, no token validates and every protected endpoint answers 401.
 \*\* Outside Development, either `JwksUri` or `AllowDiscoveryFallback=true` is required.

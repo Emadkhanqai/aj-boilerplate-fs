@@ -32,9 +32,10 @@ Browser ──cookie──▶ nginx (web container) ──auth_request──▶ 
 |---|---|---|
 | `__Host-app_sid` | Session id (opaque, 256-bit random) | Secure, HttpOnly, SameSite=Lax, Path=/ |
 | `__Host-app_login` | Binds the in-flight login `state` to this browser | Secure, HttpOnly, SameSite=Lax, Path=/, 10 min |
+| `__Host-app_noaccess` | One-shot marker set by a hand-off redeem that found no role; spent by the first `/auth/no-access` view. Carries no identity. | Secure, HttpOnly, SameSite=Lax, Path=/, 1 min |
 
 Local http development uses the same names without the `__Host-` prefix (`app_sid`,
-`app_login`) and without the `Secure` flag, because browsers refuse `__Host-` on plain http.
+`app_login`, `app_noaccess`) and without the `Secure` flag, because browsers refuse `__Host-` on plain http.
 This is controlled by `Auth:Cookies:Secure`, and `false` is refused outside Development.
 The session cookie has no `Max-Age`: it is a browser-session cookie, and the server decides when
 the session ends.
@@ -115,7 +116,7 @@ AES-256-GCM using `Auth:Session:EncryptionKey`.
   - `X-Usp-Session-Id`
   - `X-Usp-Session-Started-At`
   - `Cookie ""`
-- **Ungated:** `/auth/*` (proxied to the Auth service, rate-limited, with `X-Auth-Jwt` hidden),
+- **Ungated:** `/auth/*` (proxied to the Auth service, rate-limited, with `X-Auth-Jwt` hidden; `location = /auth/handoff` is its own block, see below),
   `= /login`, `= /logged-out`, static assets, `/env.js`, `/healthz`.
 - **Browsers get 404** on `/auth/validate`, `/auth/events` and `/internal/`. The match tolerates
   repeated slashes and any letter case.
@@ -132,6 +133,12 @@ AES-256-GCM using `Auth:Session:EncryptionKey`.
   `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, and a
   `Content-Security-Policy` whose `style-src` carries a per-request nonce (`$request_id`). The
   document gets the same nonce stamped into its markup.
+- **`/auth/handoff` carries the Auth service's own CSP, as the only CSP.** The page it returns is built by the Auth service with a
+  hash-allowed inline auto-submit script and no `form-action`, so that its form can POST to the **other** portal's
+  `/auth/handoff/redeem`. The gateway CSP (`script-src 'self'`, `form-action 'self'`) would block both, and when two CSP headers are
+  present the browser enforces both. So that one location includes `snippets/security-headers-no-csp.conf` (every header above except
+  the CSP) instead of `security-headers.conf`. The other `/auth/` pages keep the gateway CSP beside the Auth service's own. Checked by
+  `src/frontend/docker/check-gateway-config.sh`, which runs `nginx -t` for every profile and counts the CSP headers against a stub upstream.
 - **Request id:** nginx sends its `$request_id` to the Auth service and API as `X-Request-Id` and
   prints it as "Reference" on its error pages, so a symptom in a browser joins a log line.
 - **Buffer:** `proxy_buffer_size 8k`. The JWT header is larger than nginx's 4k default, and
@@ -175,7 +182,16 @@ See `docs/auth/setup.md`.
   capability false. The SPA learns the user only from this call.
 - **Sign-ins are recorded** once per `X-Usp-Session-Id` in the `AuthenticationEvents` table by
   `SignInRecordingMiddleware`, best effort: a missing header or a database fault records nothing
-  and never fails the request.
+  and never fails the request. **The end of a session** is written onto the same row by
+  `POST /api/integration/auth-backend/session-ended`, a machine surface the Auth service calls straight on the API (never through the
+  gateway) with `X-Auth-Events-Key`; see [session-ended-contract.md](session-ended-contract.md). `GET /api/v1/admin/authentication-history`
+  lists the rows (administrators only).
+- **Admin routes** `/api/v1/admin/{users,members,groups}` and `/api/v1/admin/users/{subject}/{groups,disable,enable,refresh}` are a
+  proxy over the Auth service's `/internal/admin/*`, called with `X-Admin-Api-Key` (`AuthService:*`). They answer for administrators only
+  (`admin:manage` or the `admin` seat). An upstream refusal is mapped to its own status and envelope code and never to a 403 about the
+  administrator; the one Auth-service 404 that means "this person holds no seat" is told from a switched-off surface's bare 404 by its
+  body text (see the comment on `AuthServiceIdentityAdministration.NoSeatMarker`).
+- **`GET /api/v1/me/portals`** answers the configured `Portals` the caller's capabilities allow; the SPA's top-bar switcher reads it.
 - **Rate limiting** runs after authentication and partitions on the user's subject.
 
 ## SPA side

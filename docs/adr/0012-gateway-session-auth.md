@@ -112,6 +112,13 @@ and `Authentication:EntraId` API schemes; `Keycloak:Realm`, `Keycloak:ClientSecr
 - Local sign-in uses a bundled Keycloak realm with committed, dev-only secrets.
 - The API records each sign-in once in an `AuthenticationEvents` table. It is a sign-in log, not an
   audit trail (see the note on [ADR-0008](0008-no-audit-trail-or-soft-delete.md)).
+- The Auth service also carries USP's user-admin, hand-off and session-ended surfaces
+  ([session-ended contract](../auth/session-ended-contract.md), [hand-off](../auth/handoff.md)). They add two trust
+  relationships beyond the browser's: the API calls the Auth service's `/internal/admin/*` with a shared key, and the Auth
+  service calls the API's receiver with another, both straight over the private network and never through the gateway. Each
+  surface answers 404 until its secret is configured, so a project that does not use one carries no live endpoint for it.
+  The `AuthenticationEvents` row now also records how its session ended, which is still a log of what the Auth service reported
+  and not an audit trail.
 
 ### Follow-on work
 
