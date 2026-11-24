@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using AjBoilerplate.Auth.Abstractions;
 using AjBoilerplate.Auth.Configuration;
 using AjBoilerplate.Auth.Identity;
 using AjBoilerplate.Auth.Security;
@@ -219,16 +220,135 @@ public sealed class AuthOptionsValidatorTests
     }
 
     [Fact]
+    public void Entra_defaults_are_the_ones_USP_staging_runs()
+    {
+        // Measured from USP auth-backend's staging manifest: a Graph scope so the access token is a Graph
+        // token (Keycloak's oidc provider validates it through Graph userinfo), no own-client-id scope
+        // (AADSTS650053), and the Keycloak provider alias `oidc`.
+        var options = new AuthOptions();
+
+        Assert.Equal("openid profile offline_access User.Read", options.Entra.Scopes);
+        Assert.False(options.Entra.RequestOwnClientIdScope);
+        Assert.Equal("oidc", options.Keycloak.SubjectIssuer);
+    }
+
+    [Fact]
     public void Endpoints_and_scopes_follow_the_authority()
     {
         var entra = TestConfig.Options().Entra;
 
         Assert.Equal("https://tenant.example.com/policy/oauth2/v2.0/token", entra.TokenEndpoint.AbsoluteUri);
+        Assert.Equal("https://tenant.example.com/policy/oauth2/v2.0/authorize", entra.AuthorizeEndpoint.AbsoluteUri);
+        Assert.Equal("openid profile offline_access User.Read", entra.EffectiveScopes); // control: no client id appended
+    }
+
+    [Fact]
+    public void B2C_stays_reachable_by_configuration()
+    {
+        var entra = TestConfig.Options().Entra;
+        entra.Scopes = "openid profile offline_access";
+        entra.RequestOwnClientIdScope = true;
+
         Assert.Equal("openid profile offline_access entra-client", entra.EffectiveScopes);
 
         entra.Scopes = "openid profile offline_access entra-client";
         Assert.Equal("openid profile offline_access entra-client", entra.EffectiveScopes);
     }
+
+    [Fact]
+    public void Explicit_endpoint_urls_replace_the_derived_ones()
+    {
+        var entra = TestConfig.Options().Entra;
+        entra.AuthorizeEndpointUrl = "http://localhost:8081/realms/r/protocol/openid-connect/auth";
+        entra.TokenEndpointUrl = "http://keycloak:8080/realms/r/protocol/openid-connect/token";
+
+        Assert.Equal(entra.AuthorizeEndpointUrl, entra.AuthorizeEndpoint.AbsoluteUri);
+        Assert.Equal(entra.TokenEndpointUrl, entra.TokenEndpoint.AbsoluteUri);
+    }
+}
+
+public sealed class SubjectIssuerTests
+{
+    private static AuthOptions NoIssuer()
+    {
+        var options = TestConfig.Options();
+        options.Keycloak.SubjectIssuer = "";
+        return options;
+    }
+
+    [Fact]
+    public void An_empty_subject_issuer_is_refused_outside_Development()
+    {
+        var result = new AuthOptionsValidator().Validate(null, NoIssuer());
+
+        Assert.True(result.Failed);
+        Assert.Contains(result.Failures!, f => f.StartsWith("Auth:Keycloak:SubjectIssuer is empty", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_empty_subject_issuer_is_admitted_in_Development() =>
+        Assert.True(new AuthOptionsValidator(isDevelopment: true).Validate(null, NoIssuer()).Succeeded);
+
+    [Fact]
+    public void An_http_identity_provider_needs_Development_or_the_opt_in()
+    {
+        var options = TestConfig.Options();
+        options.Entra.Authority = "http://keycloak:8080/realms/r";
+        options.Entra.TokenEndpointUrl = "http://keycloak:8080/realms/r/protocol/openid-connect/token";
+        options.Keycloak.BaseUrl = "http://keycloak:8080";
+
+        var refused = new AuthOptionsValidator().Validate(null, options);
+        Assert.Equal(3, refused.Failures!.Count(f => f.Contains("is http.", StringComparison.Ordinal)));
+
+        Assert.True(new AuthOptionsValidator(isDevelopment: true).Validate(null, options).Succeeded);
+        options.AllowInsecureUpstreams = true;
+        Assert.True(new AuthOptionsValidator().Validate(null, options).Succeeded);
+    }
+
+    private sealed class CaptureHandler : HttpMessageHandler
+    {
+        public string? Form { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Form = await request.Content!.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"access_token\":\"a.b.c\",\"expires_in\":300}", Encoding.UTF8, "application/json"),
+            };
+        }
+    }
+
+    private static async Task<string> ExchangeFormAsync(string subjectIssuer)
+    {
+        var options = TestConfig.Options();
+        options.Keycloak.SubjectIssuer = subjectIssuer;
+        var handler = new CaptureHandler();
+        var exchanger = new KeycloakExchanger(
+            new HttpClient(handler),
+            TestConfig.Wrap(options),
+            TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<KeycloakExchanger>.Instance);
+
+        var result = await exchanger.ExchangeAsync("entra-access-token", options.Portal, CancellationToken.None);
+
+        Assert.Equal(ExchangeOutcome.Success, result.Outcome); // control: the request was made and answered
+        return handler.Form!;
+    }
+
+    [Fact]
+    public async Task The_exchange_sends_subject_issuer_when_one_is_set() =>
+        Assert.Contains("subject_issuer=oidc", await ExchangeFormAsync("oidc"), StringComparison.Ordinal);
+
+    [Fact]
+    public async Task The_exchange_omits_subject_issuer_when_it_is_empty()
+    {
+        var form = await ExchangeFormAsync("");
+
+        Assert.DoesNotContain("subject_issuer", form, StringComparison.Ordinal);
+        Assert.Contains("subject_token=entra-access-token", form, StringComparison.Ordinal); // control: the rest is still sent
+    }
+
 }
 
 public sealed class ForceRefreshHandlerTests

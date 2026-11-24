@@ -37,9 +37,10 @@ to start when a required value is missing or invalid.
 | `Auth:PublicOrigin` | browser-facing origin, no path; builds the redirect URI `/auth/callback` |
 | `Auth:LoggedOutPath` | default `/logged-out` |
 | `Auth:Cookies:Secure` | default `true`; `false` drops the `__Host-` prefix and the Secure flag, Development only |
-| `Auth:AllowInsecureUpstreams` | permits an http `Keycloak:TokenEndpointUrl` outside Development |
-| `Auth:Entra:Authority`, `ClientId`, `ClientSecret`, `Scopes`, `RequestOwnClientIdScope`, `Timeout` | identity provider |
-| `Auth:Keycloak:BaseUrl`, `Realm`, `SubjectIssuer`, `Scope`, `SendAudience`, `Timeout`, `MaxAttempts`, `RetryBaseDelay`, `TokenEndpointUrl` | token exchange |
+| `Auth:AllowInsecureUpstreams` | permits http for the Entra authority and endpoint URLs and for the Keycloak base and token URLs outside Development |
+| `Auth:Entra:Authority`, `ClientId`, `ClientSecret`, `Scopes`, `RequestOwnClientIdScope`, `Timeout` | identity provider. Defaults are USP staging's Entra ID values: authority `https://login.microsoftonline.com/<tenant-id>`, scopes `openid profile offline_access User.Read` (a Graph scope, so the access token is a Graph token and Keycloak's `oidc` provider can validate it), `RequestOwnClientIdScope=false`. For Azure AD B2C set scopes `openid profile offline_access`, `RequestOwnClientIdScope=true` and `Keycloak:SubjectIssuer` to the B2C alias |
+| `Auth:Entra:AuthorizeEndpointUrl`, `TokenEndpointUrl` | optional full URLs for an issuer whose endpoints are not `{Authority}/oauth2/v2.0/*` (the local Keycloak stand-in); the first is where the browser goes, the second is POSTed by the service |
+| `Auth:Keycloak:BaseUrl`, `Realm`, `SubjectIssuer` (default `oidc`; empty omits the parameter and is refused outside Development), `Scope`, `SendAudience`, `Timeout`, `MaxAttempts`, `RetryBaseDelay`, `TokenEndpointUrl` | token exchange |
 | `Auth:Portal:ClientId`, `ClientSecret` | this app's Keycloak client |
 | `Auth:Admin:ApiKey` | enables the admin endpoint |
 | `Auth:Session:EncryptionKey` | base64 of 32 bytes |

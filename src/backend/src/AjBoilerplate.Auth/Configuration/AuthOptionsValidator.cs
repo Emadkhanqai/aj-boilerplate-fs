@@ -21,22 +21,25 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
             failures.Add("Auth:LoggedOutPath must be a local absolute path such as /logged-out.");
         }
 
-        if (!Uri.TryCreate(options.Entra.Authority, UriKind.Absolute, out var entra) || entra.Scheme != Uri.UriSchemeHttps)
-        {
-            failures.Add("Auth:Entra:Authority must be an absolute https URL.");
-        }
+        ValidateUpstream("Auth:Entra:Authority", options.Entra.Authority, required: true, options, failures);
+        ValidateUpstream("Auth:Entra:AuthorizeEndpointUrl", options.Entra.AuthorizeEndpointUrl, required: false, options, failures);
+        ValidateUpstream("Auth:Entra:TokenEndpointUrl", options.Entra.TokenEndpointUrl, required: false, options, failures);
 
         if (!options.Entra.Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("offline_access"))
         {
             failures.Add("Auth:Entra:Scopes must include offline_access: sessions cannot refresh without it.");
         }
 
-        if (!Uri.TryCreate(options.Keycloak.BaseUrl, UriKind.Absolute, out var kc) || kc.Scheme != Uri.UriSchemeHttps)
+        ValidateUpstream("Auth:Keycloak:BaseUrl", options.Keycloak.BaseUrl, required: true, options, failures);
+        ValidateUpstream("Auth:Keycloak:TokenEndpointUrl", options.Keycloak.TokenEndpointUrl, required: false, options, failures);
+
+        if (string.IsNullOrWhiteSpace(options.Keycloak.SubjectIssuer) && !_isDevelopment)
         {
-            failures.Add("Auth:Keycloak:BaseUrl must be an absolute https URL.");
+            failures.Add(
+                "Auth:Keycloak:SubjectIssuer is empty. Empty means an internal Keycloak-to-Keycloak exchange, "
+                + "which is refused outside Development: set the alias of the identity provider in the realm.");
         }
 
-        ValidateTokenEndpoint(options, failures);
         ValidateEncryptionKey(options.Session.EncryptionKey, failures);
 
         if (options.Session.RefreshSkew >= options.Session.IdleTimeout)
@@ -87,23 +90,33 @@ public sealed class AuthOptionsValidator : IValidateOptions<AuthOptions>
         }
     }
 
-    private void ValidateTokenEndpoint(AuthOptions options, List<string> failures)
+    /// <summary>
+    /// An upstream receives a client secret or a user's token, so plain http to it is refused unless the host is
+    /// Development or <c>Auth:AllowInsecureUpstreams</c> says otherwise.
+    /// </summary>
+    private void ValidateUpstream(string key, string url, bool required, AuthOptions options, List<string> failures)
     {
-        var url = options.Keycloak.TokenEndpointUrl;
         if (string.IsNullOrWhiteSpace(url))
         {
+            if (required)
+            {
+                failures.Add($"{key} must be an absolute https URL.");
+            }
+
             return;
         }
 
-        if (!Uri.TryCreate(url, UriKind.Absolute, out var token)
-            || (token.Scheme != Uri.UriSchemeHttps && token.Scheme != Uri.UriSchemeHttp))
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
         {
-            failures.Add("Auth:Keycloak:TokenEndpointUrl, when set, must be an absolute http or https URL.");
+            failures.Add(required
+                ? $"{key} must be an absolute https URL."
+                : $"{key}, when set, must be an absolute http or https URL.");
         }
-        else if (token.Scheme == Uri.UriSchemeHttp && !options.AllowInsecureUpstreams && !_isDevelopment)
+        else if (uri.Scheme == Uri.UriSchemeHttp && !options.AllowInsecureUpstreams && !_isDevelopment)
         {
             failures.Add(
-                "Auth:Keycloak:TokenEndpointUrl is http. Plain http to an upstream that receives a client secret is refused "
+                $"{key} is http. Plain http to an upstream that receives a client secret is refused "
                 + "unless Auth:AllowInsecureUpstreams=true or the environment is Development.");
         }
     }

@@ -115,11 +115,21 @@ public static class Program
 
     private static void LogInsecureUpstreams(AuthOptions options, Microsoft.Extensions.Logging.ILogger logger)
     {
-        if (Uri.TryCreate(options.Keycloak.TokenEndpointUrl, UriKind.Absolute, out var token) && token.Scheme == Uri.UriSchemeHttp)
+        foreach (var (key, url) in new[]
         {
-            logger.LogWarning(
-                "Insecure upstream in use: Auth:Keycloak:TokenEndpointUrl is plain http to {UpstreamHost}. Permitted only by Auth:AllowInsecureUpstreams or a Development host.",
-                token.Host);
+            ("Auth:Entra:Authority", options.Entra.Authority),
+            ("Auth:Entra:TokenEndpointUrl", options.Entra.TokenEndpointUrl),
+            ("Auth:Keycloak:BaseUrl", options.Keycloak.BaseUrl),
+            ("Auth:Keycloak:TokenEndpointUrl", options.Keycloak.TokenEndpointUrl),
+        })
+        {
+            if (Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttp)
+            {
+                logger.LogWarning(
+                    "Insecure upstream in use: {Setting} is plain http to {UpstreamHost}. Permitted only by Auth:AllowInsecureUpstreams or a Development host.",
+                    key,
+                    uri.Host);
+            }
         }
     }
 }

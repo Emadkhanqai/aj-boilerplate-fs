@@ -52,9 +52,13 @@ internal sealed partial class KeycloakExchanger : IKeycloakExchanger
             ["client_secret"] = portal.ClientSecret,
             ["subject_token"] = entraAccessToken,
             ["subject_token_type"] = AccessTokenType,
-            ["subject_issuer"] = _options.SubjectIssuer,
             ["scope"] = _options.Scope,
         };
+
+        if (!string.IsNullOrWhiteSpace(_options.SubjectIssuer))
+        {
+            form["subject_issuer"] = _options.SubjectIssuer;
+        }
 
         if (_options.SendAudience)
         {

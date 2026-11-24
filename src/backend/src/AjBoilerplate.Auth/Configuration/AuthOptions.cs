@@ -108,9 +108,32 @@ public sealed class AuthSessionOptions
     public TimeSpan SweepInterval { get; set; } = TimeSpan.FromMinutes(30);
 }
 
-/// <summary>The OIDC identity provider. <see cref="Authority"/> is the base under which <c>/oauth2/v2.0/authorize</c> and <c>/oauth2/v2.0/token</c> live.</summary>
+/// <summary>
+/// The OIDC identity provider. <see cref="Authority"/> is the base under which <c>/oauth2/v2.0/authorize</c> and
+/// <c>/oauth2/v2.0/token</c> live.
+///
+/// <para>
+/// The DEFAULTS are the ones USP's staging Auth service runs against Microsoft Entra ID (a tenant id in the
+/// authority, a Microsoft Graph scope, no own-client-id scope). They are not what Azure AD B2C needs, and the
+/// difference is the part to keep:
+/// </para>
+/// <list type="bullet">
+///   <item>Keycloak's <c>oidc</c> identity provider validates the subject token by calling Graph's userinfo
+///     endpoint, which accepts only a token whose audience is Graph. So the Entra ACCESS token must be a Graph
+///     token, and <c>User.Read</c> is what makes it one. <c>&lt;client-id&gt;/.default</c> was tried and the
+///     token came back with this app as its audience, so the Keycloak exchange failed.</item>
+///   <item>Appending the bare client id as a scope (<see cref="RequestOwnClientIdScope"/>) made Entra answer
+///     AADSTS650053, "scope does not exist on the resource" (Graph). That is a B2C idiom: B2C issues an access
+///     token only when the app's own client id is requested as a scope.</item>
+/// </list>
+/// <para>
+/// To use B2C, set <c>Authority</c> to the policy URL, <c>Scopes</c> to <c>openid profile offline_access</c>,
+/// <c>RequestOwnClientIdScope</c> to true and <c>Keycloak:SubjectIssuer</c> to the B2C provider's alias.
+/// </para>
+/// </summary>
 public sealed class EntraOptions
 {
+    /// <summary>Entra: <c>https://login.microsoftonline.com/&lt;tenant-id&gt;</c>; the v2 endpoints are appended here.</summary>
     [Required]
     public string Authority { get; set; } = string.Empty;
 
@@ -120,24 +143,38 @@ public sealed class EntraOptions
     [Required]
     public string ClientSecret { get; set; } = string.Empty;
 
-    /// <summary><c>offline_access</c> is what yields the refresh token the session lives on.</summary>
+    /// <summary><c>offline_access</c> is what yields the refresh token the session lives on; <c>User.Read</c> makes the access token a Graph token (see the type remarks).</summary>
     [Required]
-    public string Scopes { get; set; } = "openid profile offline_access";
+    public string Scopes { get; set; } = "openid profile offline_access User.Read";
 
-    /// <summary>Also request the app's own client id as a scope: B2C only issues an access token (what Keycloak exchanges) when a resource scope is requested.</summary>
-    public bool RequestOwnClientIdScope { get; set; } = true;
+    /// <summary>Also request the app's own client id as a scope. False for Entra (it breaks it, see the type remarks); true for B2C.</summary>
+    public bool RequestOwnClientIdScope { get; set; }
 
     [Range(typeof(TimeSpan), "00:00:01", "00:01:00")]
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Full authorize URL, for an issuer whose endpoints are not <c>{Authority}/oauth2/v2.0/authorize</c>
+    /// (the local Keycloak stand-in for Entra). Empty means derive it from <see cref="Authority"/>. This is
+    /// where the BROWSER is sent, so it must be reachable from the browser.
+    /// </summary>
+    public string AuthorizeEndpointUrl { get; set; } = string.Empty;
+
+    /// <summary>Full token URL, same reason as <see cref="AuthorizeEndpointUrl"/>. This is POSTed by the service, so it must be reachable from the service, which is not always the browser's address.</summary>
+    public string TokenEndpointUrl { get; set; } = string.Empty;
 
     public string EffectiveScopes =>
         RequestOwnClientIdScope && !Scopes.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(ClientId, StringComparer.Ordinal)
             ? $"{Scopes} {ClientId}"
             : Scopes;
 
-    public Uri AuthorizeEndpoint => new($"{Authority.TrimEnd('/')}/oauth2/v2.0/authorize");
+    public Uri AuthorizeEndpoint => new(string.IsNullOrWhiteSpace(AuthorizeEndpointUrl)
+        ? $"{Authority.TrimEnd('/')}/oauth2/v2.0/authorize"
+        : AuthorizeEndpointUrl);
 
-    public Uri TokenEndpoint => new($"{Authority.TrimEnd('/')}/oauth2/v2.0/token");
+    public Uri TokenEndpoint => new(string.IsNullOrWhiteSpace(TokenEndpointUrl)
+        ? $"{Authority.TrimEnd('/')}/oauth2/v2.0/token"
+        : TokenEndpointUrl);
 }
 
 public sealed class KeycloakOptions
@@ -149,9 +186,13 @@ public sealed class KeycloakOptions
     [Required]
     public string Realm { get; set; } = "default";
 
-    /// <summary>Alias of the identity provider inside the realm (<c>subject_issuer</c>).</summary>
-    [Required]
-    public string SubjectIssuer { get; set; } = string.Empty;
+    /// <summary>
+    /// Alias of the Keycloak identity provider that trusts the sign-in token (<c>subject_issuer</c>). <c>oidc</c> is
+    /// what USP's Keycloak calls its Entra ID provider; B2C has its own alias. EMPTY omits the parameter, which
+    /// makes the call an internal (Keycloak to Keycloak) exchange: only for a local realm that plays the identity
+    /// provider itself, and refused outside Development.
+    /// </summary>
+    public string SubjectIssuer { get; set; } = "oidc";
 
     [Required]
     public string Scope { get; set; } = "openid profile email";
