@@ -19,8 +19,10 @@ export interface SessionUser {
  * `GET /api/v1/me` so the SERVER decides what the user may do. In `dev` mode it is synthesized
  * from the picked role so the app runs identically offline.
  *
- * Hand-written on purpose: this repo's generated `api-types` do not cover `/me` yet. Once they do,
- * replace this interface with the generated type.
+ * Hand-written on purpose, though `api-types` now generates `UserProfileResponse` from the OpenAPI
+ * document: every generated property is optional and nullable (the document declares no `required`),
+ * which would push a null check into every reader. `user-profile.contract.spec.ts` fails if this
+ * interface names a field the generated schema does not have.
  */
 export interface UserProfile {
   userId: string;

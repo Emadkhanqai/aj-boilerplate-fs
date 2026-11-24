@@ -8,7 +8,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "generate:api": "openapi-typescript http://localhost:5080/swagger/v1/swagger.json -o libs/data-access/api-types/src/lib/types.ts",
+    "generate:api": "openapi-typescript ../../docs/api/openapi.json -o libs/data-access/api-types/src/lib/generated.ts",
     "dev": "nx serve web",
     "dev:offline": "nx serve web --configuration=demo",
     "build": "nx build web",
