@@ -3,6 +3,8 @@ import {
   NO_CAPABILITIES,
   ROLES,
   capabilitiesFor,
+  capabilitiesForPermissions,
+  capabilitiesForProfile,
   capabilitiesForRoles,
   isRole,
   toRole,
@@ -76,5 +78,63 @@ describe('roles', () => {
 
   it('returns the all-false baseline for no roles (fail safe)', () => {
     expect(capabilitiesForRoles([])).toEqual(NO_CAPABILITIES);
+  });
+});
+
+describe('permissions -> capabilities', () => {
+  it('maps items:read to view only', () => {
+    expect(capabilitiesForPermissions(['items:read'])).toEqual({ ...NO_CAPABILITIES, canView: true });
+  });
+
+  it('maps items:write to view, create and edit but not delete or administer', () => {
+    expect(capabilitiesForPermissions(['items:write'])).toEqual({
+      canView: true,
+      canCreate: true,
+      canEdit: true,
+      canDelete: false,
+      canAdminister: false,
+    });
+  });
+
+  it('maps admin:manage to every capability, the same set the admin role has', () => {
+    expect(capabilitiesForPermissions(['admin:manage'])).toEqual(capabilitiesFor('admin'));
+  });
+
+  it('grants nothing for an unknown permission, and tolerates case and whitespace on a known one', () => {
+    expect(capabilitiesForPermissions(['reports:read', 'items:delete'])).toEqual(NO_CAPABILITIES);
+    expect(capabilitiesForPermissions([' Items:Read '])).toEqual({ ...NO_CAPABILITIES, canView: true });
+  });
+
+  it('is a union across several permissions', () => {
+    const caps = capabilitiesForPermissions(['items:read', 'admin:manage']);
+    expect(caps.canAdminister).toBe(true);
+    expect(caps.canView).toBe(true);
+  });
+});
+
+describe('capabilitiesForProfile', () => {
+  const none = NO_CAPABILITIES;
+
+  it('works for a profile with no permissions field at all (an API that predates it)', () => {
+    expect(capabilitiesForProfile({ roles: ['Viewer'], capabilities: none })).toEqual(capabilitiesFor('viewer'));
+  });
+
+  it('lets a permission grant what the seat does not: seat OR permission', () => {
+    const caps = capabilitiesForProfile({ roles: ['Viewer'], capabilities: none, permissions: ['items:write'] });
+    expect(caps.canEdit).toBe(true);
+    expect(caps.canDelete).toBe(false);
+  });
+
+  it('keeps what the server flags say even when roles and permissions grant nothing', () => {
+    const caps = capabilitiesForProfile({
+      roles: [],
+      capabilities: { ...none, canDelete: true },
+      permissions: [],
+    });
+    expect(caps).toEqual({ ...none, canDelete: true });
+  });
+
+  it('grants nothing to a profile with no roles, no permissions and no flags', () => {
+    expect(capabilitiesForProfile({ roles: [] })).toEqual(NO_CAPABILITIES);
   });
 });

@@ -116,3 +116,45 @@ export function capabilitiesForRoles(roles: readonly Role[]): Capabilities {
 
 /** A capability key — used by route guards to name the required capability. */
 export type Capability = keyof Capabilities;
+
+const PERMISSION_CAPABILITIES: Readonly<Record<string, Partial<Capabilities>>> = {
+  'items:read': { canView: true },
+  'items:write': { canView: true, canCreate: true, canEdit: true },
+  'admin:manage': { canView: true, canCreate: true, canEdit: true, canDelete: true, canAdminister: true },
+};
+
+/** OR-union of the capabilities the given `resource:action` permissions grant; unknown ones grant nothing. */
+export function capabilitiesForPermissions(permissions: readonly string[]): Capabilities {
+  const granted = { ...NO_CAPABILITIES };
+  for (const permission of permissions) {
+    const grants = PERMISSION_CAPABILITIES[permission.trim().toLowerCase()] ?? {};
+    for (const key of Object.keys(grants) as Capability[]) {
+      granted[key] = granted[key] || grants[key] === true;
+    }
+  }
+  return granted;
+}
+
+/**
+ * What the UI gates on for a `/api/v1/me` profile: the server's own flags, plus whatever its roles
+ * and permissions grant. The API admits a caller by a seat OR a permission, so the UI is a union
+ * too. UX only — the backend authorizes every request regardless.
+ */
+export function capabilitiesForProfile(profile: {
+  roles: readonly string[];
+  capabilities?: Capabilities;
+  permissions?: readonly string[];
+}): Capabilities {
+  const sources = [
+    profile.capabilities ?? NO_CAPABILITIES,
+    capabilitiesForRoles(toRoles(profile.roles)),
+    capabilitiesForPermissions(profile.permissions ?? []),
+  ];
+  return {
+    canView: sources.some((s) => s.canView),
+    canCreate: sources.some((s) => s.canCreate),
+    canEdit: sources.some((s) => s.canEdit),
+    canDelete: sources.some((s) => s.canDelete),
+    canAdminister: sources.some((s) => s.canAdminister),
+  };
+}

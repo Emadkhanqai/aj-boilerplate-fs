@@ -3,6 +3,8 @@ import { provideRouter } from '@angular/router';
 import { provideLocationMocks } from '@angular/common/testing';
 import { describe, expect, it } from 'vitest';
 import { MessageService } from 'primeng/api';
+import { AuthService } from '@aj-boilerplate/auth';
+import { RoleChangeWatcher } from '@aj-boilerplate/shell';
 import { App } from './app';
 
 describe('App', () => {
@@ -11,7 +13,15 @@ describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
-      providers: [provideRouter([]), provideLocationMocks(), MessageService],
+      providers: [
+        provideRouter([]),
+        provideLocationMocks(),
+        MessageService,
+        // The two blocking dialogs mounted at the root read these; the real ones need an HttpClient
+        // and a QueryClient that this spec has no business building.
+        { provide: AuthService, useValue: { signOut: () => undefined } },
+        { provide: RoleChangeWatcher, useValue: { blocking: () => false } },
+      ],
     }).compileComponents();
 
     fixture = TestBed.createComponent(App);
@@ -26,6 +36,12 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('router-outlet')).toBeTruthy();
     expect(compiled.querySelector('app-nx-welcome')).toBeNull();
+  });
+
+  it('mounts both blocking dialogs at the root, so they cover every route', () => {
+    const compiled = fixture.nativeElement as HTMLElement;
+    expect(compiled.querySelector('app-role-change-dialog')).toBeTruthy();
+    expect(compiled.querySelector('app-access-revoked-dialog')).toBeTruthy();
   });
 
   it('mounts a single p-toast at the root, positioned bottom-right, so it is present on every route', () => {

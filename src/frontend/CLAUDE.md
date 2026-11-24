@@ -57,7 +57,10 @@ moves to `shared/*` — it does not get imported sideways.
    way. `[innerHTML]`/`bypassSecurityTrust*` need an explicit review comment justifying them.
 10. **Components ≤ 300 lines.** Past that, split: a container that fetches and a presentational
     child, or extract pure logic into a `*-support.ts` file that can be unit-tested directly.
-11. **No secrets in the repo.** `src/environments/*` and `public/env.js` hold placeholders only;
+11. **The browser holds no token.** Never store one in `localStorage`/`sessionStorage`, never attach an
+    `Authorization` header from the SPA (nginx overwrites it anyway), never add a browser-side OIDC
+    client. Sign-in is a full-page navigation to `/auth/login`; see `docs/auth/gateway-contract.md`.
+12. **No secrets in the repo.** `src/environments/*` and `public/env.js` hold placeholders only;
     real values arrive at runtime via `docker/40-env.sh`.
 
 ## Bundle budgets
@@ -67,9 +70,13 @@ comments, so the reasoning lives here — change one, change this.
 
 | Budget | Warn / error | Measured today | Catches |
 |---|---|---|---|
-| `initial` | 1.2mb / 1.6mb | **886.85 kB** | A feature imported eagerly that should have been lazy |
-| `anyScript` | 900kb / 1.2mb | **667.39 kB** (largest chunk) | A single chunk ballooning — **including lazy ones**, which `initial` cannot see |
+| `initial` | 1.2mb / 1.6mb | **971.34 kB** | A feature imported eagerly that should have been lazy |
+| `anyScript` | 900kb / 1.2mb | **744.35 kB** (largest chunk) | A single chunk ballooning — **including lazy ones**, which `initial` cannot see |
 | `anyComponentStyle` | 10kb / 14kb | ~8 kB (the What's New modal) | A component carrying too much bespoke CSS — see ADR-0007 |
+
+The `initial` and largest-chunk figures rose by about 85 kB and 77 kB when the two blocking
+dialogs (access changed / access removed) moved into the root component: PrimeNG's `Dialog` is now
+in the initial chunk instead of a lazy one. Budgets were left alone; the warning is still ~24% away.
 
 Two things worth knowing before you touch these numbers:
 

@@ -6,15 +6,15 @@ import { sanitizeReturnPath } from './sanitize-return-path';
 
 /**
  * Guards the whole authenticated route group. Redirects to `/login` (preserving the attempted URL
- * as a query param so login can return the user there) when no session exists.
+ * as `from`, so sign-in can return the user there) when no session exists.
  *
- * NB: UX routing only — every API call is independently authorized by the backend.
+ * In gateway mode the session is ambient and always "present" here: the real gate is nginx, which
+ * never serves the shell without a valid session. This guard is the dev-mode gate and the
+ * after-sign-out/expiry gate. UX routing only — the backend authorizes every request.
  *
- * `state.url` is sanitized before it is stored: identity providers routinely echo their own
- * protocol parameters back onto the post-logout landing URL (`/?state=eyJpZCI6…`), and capturing
- * that verbatim puts the blob in the visible address bar and lets it compound across
- * sign-out/sign-in cycles. Sanitizing at CAPTURE — not only at the sinks that consume `from` —
- * keeps the URL the user actually sees clean too. See `sanitize-return-path.ts`.
+ * `state.url` is sanitized when captured, not only where it is consumed: identity providers echo
+ * protocol parameters (`/?state=…`) onto the post-logout landing URL, and capturing that verbatim
+ * puts the blob in the address bar and compounds it across sign-out/sign-in cycles.
  */
 export const authGuard: CanActivateFn = (_route, state) => {
   const authService = inject(AuthService);
@@ -22,5 +22,6 @@ export const authGuard: CanActivateFn = (_route, state) => {
   if (authService.isAuthenticated()) {
     return true;
   }
-  return router.createUrlTree(['/login'], { queryParams: { from: sanitizeReturnPath(state.url) } });
+  const from = sanitizeReturnPath(state.url);
+  return from === '/' ? router.createUrlTree(['/login']) : router.createUrlTree(['/login'], { queryParams: { from } });
 };

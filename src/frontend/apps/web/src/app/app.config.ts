@@ -1,6 +1,8 @@
 import {
   ApplicationConfig,
+  Injector,
   inject,
+  provideAppInitializer,
   provideBrowserGlobalErrorListeners,
 } from '@angular/core';
 import { PreloadAllModules, provideRouter, withPreloading } from '@angular/router';
@@ -11,16 +13,18 @@ import { provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { providePrimeNG } from 'primeng/config';
 import { MessageService } from 'primeng/api';
 import {
-  AUTH_TOKEN_PROVIDER,
-  SESSION_EXPIRED_NOTIFIER,
-  TOKEN_REFRESHER,
+  ACCESS_REVOKED_OBSERVER,
+  FORBIDDEN_OBSERVER,
+  accessRevokedInterceptor,
   authInterceptor,
   envelopeInterceptor,
 } from '@aj-boilerplate/data-access/api-client';
 import { QUERY_CLIENT, provideGlobalErrorHandler } from '@aj-boilerplate/shared/ui';
 import { provideDocumentDirection } from '@aj-boilerplate/shared/util';
-import { AuthService } from '@aj-boilerplate/auth';
+import { AccessRevokedWatcher, RoleChangeWatcher } from '@aj-boilerplate/shell';
 import { appPreset } from '../styles/app-preset';
+import { provideAuthSeams } from './auth-seams';
+import { readCspNonce } from './csp-nonce';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -41,10 +45,12 @@ export const appConfig: ApplicationConfig = {
     // render is done the router preloads all of them in the background, so the first actual
     // navigation to any of them is instant instead of paying its chunk's network cost then.
     provideRouter(appRoutes, withPreloading(PreloadAllModules)),
-    // Interceptor ORDER matters: `authInterceptor` must run before `envelopeInterceptor` so that
-    // by the time it inspects a failure it is looking at the unwrapped `ApiError`, not a raw
-    // `HttpErrorResponse`. Keep them in this order.
-    provideHttpClient(withFetch(), withInterceptors([authInterceptor, envelopeInterceptor])),
+    // Interceptor ORDER matters. `authInterceptor` comes before `envelopeInterceptor` so that it
+    // inspects the unwrapped `ApiError`; `accessRevokedInterceptor` comes AFTER it (so it sits
+    // closest to the network) because it needs the raw `HttpErrorResponse` and its headers, which
+    // the envelope discards. None of them attaches a credential: the cookie rides along and nginx
+    // adds the `Authorization` header (docs/auth/gateway-contract.md).
+    provideHttpClient(withFetch(), withInterceptors([authInterceptor, envelopeInterceptor, accessRevokedInterceptor])),
     // `MessageService` backs the single `<p-toast>` mounted at the true root (`app.html`) —
     // provided here so it is one app-wide singleton, and so `QUERY_CLIENT`'s factory can inject
     // it to report otherwise-unhandled API failures as toasts.
@@ -58,29 +64,28 @@ export const appConfig: ApplicationConfig = {
       // Render every overlay (select/autocomplete panels…) on <body>: the design system's
       // `.panel` has `overflow: hidden` and dialogs stack, which otherwise clips them.
       overlayAppendTo: 'body',
+      // Lets PrimeNG's runtime-injected <style> tags through the gateway's nonce-based CSP.
+      csp: { nonce: readCspNonce() },
     }),
-    // The three DI seams that let `data-access` handle auth without importing `libs/auth`
-    // (the module-boundary rule forbids that dependency direction).
+    ...provideAuthSeams(),
     {
-      provide: AUTH_TOKEN_PROVIDER,
+      // Resolved lazily through the injector: the watchers inject `AuthService`, which injects the
+      // router and the query client, and this token is read during HttpClient construction.
+      provide: ACCESS_REVOKED_OBSERVER,
       useFactory: () => {
-        const auth = inject(AuthService);
-        return () => auth.currentToken();
+        const injector = inject(Injector);
+        return () => injector.get(AccessRevokedWatcher).markRevoked();
       },
     },
     {
-      provide: TOKEN_REFRESHER,
+      provide: FORBIDDEN_OBSERVER,
       useFactory: () => {
-        const auth = inject(AuthService);
-        return () => auth.refreshToken();
+        const injector = inject(Injector);
+        return () => injector.get(RoleChangeWatcher).checkNow();
       },
     },
-    {
-      provide: SESSION_EXPIRED_NOTIFIER,
-      useFactory: () => {
-        const auth = inject(AuthService);
-        return () => auth.notifySessionExpired();
-      },
-    },
+    provideAppInitializer(() => {
+      inject(RoleChangeWatcher).start();
+    }),
   ],
 };

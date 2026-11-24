@@ -1,0 +1,15 @@
+/* The three pages nginx answers with itself (logged out, no access, temporarily unavailable). They
+   must work when the app, the Auth service or the API is down, so they depend on nothing but this
+   one file, served from the same origin so the CSP allows it. */
+:root { color-scheme: light; --ink: #1a1d21; --muted: #5b6470; --line: #d9dde3; --bg: #f5f6f8; --brand: #0b5fff; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--ink);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { width: min(32rem, calc(100% - 2rem)); padding: 2rem; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+h1 { margin: 0 0 .75rem; font-size: 1.4rem; }
+p { margin: 0 0 1rem; }
+.sub { color: var(--muted); }
+.cta { display: inline-block; padding: .6rem 1.1rem; border: 0; border-radius: 8px; background: var(--brand); color: #fff;
+  font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; }
+.cta:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+.ref { margin: 1.25rem 0 0; font-size: .8rem; color: var(--muted); }
